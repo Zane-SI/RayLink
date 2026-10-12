@@ -280,7 +280,7 @@
               <div class="panel-heading"><div><p class="eyebrow">简单模式</p><h2>选择路由行为</h2></div><span class="status-badge good"><i></i>按客户端适配</span></div>
               <form id="routing-mode-form" class="routing-mode-grid">
                 <label class="routing-mode-card"><input type="radio" name="mode" value="smart"><span><strong>智能分流</strong><small>内网和国内直连；AI 与境外流量走代理；未知域名解析真实 IP 后判断，仍未分类时可手动选择出口。</small></span></label>
-                <label class="routing-mode-card"><input type="radio" name="mode" value="global-proxy"><span><strong>全局代理</strong><small>除内网和显式直连规则外，全部流量使用 RayLink 代理。</small></span></label>
+                <label class="routing-mode-card"><input type="radio" name="mode" value="global-proxy"><span><strong>全局代理</strong><small>除内网和显式直连规则外，全部流量使用普通代理。</small></span></label>
                 <label class="routing-mode-card"><input type="radio" name="mode" value="direct"><span><strong>全部直连</strong><small>默认直连，仍遵从自定义代理、AI 和拦截例外。</small></span></label>
                 <label class="field"><span>AI 节点选择方式</span><select name="aiSelection"><option value="manual">手动固定节点</option><option value="fallback">协议自动回退</option></select></label>
                 <p class="field-hint">手动固定：在客户端 AI 策略组选择具体节点，故障时不会自动切换。协议自动回退：由客户端在允许的节点内切换；固定主机限制仍然生效。请核对所选节点或主机的地区是否符合服务要求。</p>

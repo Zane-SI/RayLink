@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { loadConfig } from "../server/config.js";
 
@@ -7,6 +10,24 @@ const productionSecrets = {
   RAYLINK_ADMIN_PASSWORD: "a-production-password",
   RAYLINK_SUBSCRIPTION_ENCRYPTION_KEY: "a-production-subscription-key"
 };
+
+test("CDN subscriptions opt in to the deployed adapter settings and reject invalid settings without exposing them", t => {
+  assert.equal(loadConfig({}).cdnIngress, null);
+  const dir = mkdtempSync(join(tmpdir(), "raylink-cdn-settings-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, "settings.json");
+  const env = { RAYLINK_CDN_INGRESS_FILE: path };
+  const settings = { sourceTag: "raylink-vless", domain: "cdn.example.com", path: "/0123456789abcdef0123456789abcdef", listenPort: 18444 };
+  writeFileSync(path, JSON.stringify(settings));
+  assert.deepEqual(loadConfig(env).cdnIngress, { domain: settings.domain, path: settings.path });
+  for (const invalid of ["{not JSON", ...[
+    { domain: "203.0.113.1" }, { domain: "https://cdn.example.com" }, { domain: "*.example.com" },
+    { sourceTag: "raylink-vmess" }, { path: "/not-the-deployed-random-path" }
+  ].map(change => JSON.stringify({ ...settings, ...change }))]) {
+    writeFileSync(path, invalid);
+    assert.throws(() => loadConfig(env), { message: "Invalid RAYLINK_CDN_INGRESS_FILE settings" });
+  }
+});
 
 test("production control plane requires an HTTPS public origin", () => {
   assert.throws(

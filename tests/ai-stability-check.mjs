@@ -88,7 +88,7 @@ async function check(core) {
       try {
         const response = await fetch(`http://127.0.0.1:${controller}/proxies`);
         const state = (await response.json()).proxies;
-        logs += "\n" + JSON.stringify(Object.fromEntries(Object.entries(state).filter(([name]) => ["raylink-primary-vless", "raylink-backup-vless", "AI 稳定出口", "AI 网站代理"].includes(name))));
+        logs += "\n" + JSON.stringify(Object.fromEntries(Object.entries(state).filter(([name]) => ["raylink-primary-vless", "raylink-backup-vless", "AI 稳定出口", "AI 代理"].includes(name))));
       } catch {}
     }
     throw new Error(`${core}: ${label}\n${logs.slice(-5000)}`);
@@ -121,11 +121,13 @@ async function check(core) {
         .replaceAll('type: "vless"', 'type: "http"').replace(/^\s+uuid:.*\n/gm, "")
         .replace(/interval: (?:60|180)/g, "interval: 1");
       if (negativeControl) {
-        // Recreate the old modern selector: provider nodes precede explicit
-        // groups in Mihomo, silently making its first concrete node the default.
-        const start = yaml.indexOf('name: "AI 网站代理"'), end = yaml.indexOf("\n  - ", start);
+        // Omit the automatic group from the ordered filter to recreate the
+        // provider-order regression in an otherwise valid native profile.
+        const start = yaml.indexOf('name: "AI 代理"'), end = yaml.indexOf("\n  - ", start);
         assert.ok(start >= 0 && end > start, "AI selector must exist");
-        const regressed = yaml.slice(start, end) + '\n    use:\n      - "raylink-health"\n    filter: "^raylink-primary-vless$`^raylink-backup-vless$"';
+        const original = yaml.slice(start, end);
+        assert.equal((original.match(/\n    filter:/g) || []).length, 1);
+        const regressed = original.replace(/\n    filter: [^\n]+/, () => '\n    filter: "^raylink-primary-vless$`^raylink-backup-vless$"');
         yaml = yaml.slice(0, start) + regressed + yaml.slice(end);
       }
       const path = join(directory, "config.yaml"); await writeFile(path, yaml);
@@ -180,11 +182,10 @@ async function check(core) {
         });
         assert.equal(response.status, 204, await response.text());
       };
-      await choose("AI 网站代理", "AI 节点选择");
-      await choose("AI 节点选择", "raylink-backup-vless");
-      await choose("手动选择", "raylink-primary-vless");
+      await choose("AI 代理", "raylink-backup-vless");
+      await choose("普通代理", "raylink-primary-vless");
       assert.equal(await request(), "BACKUP", "manual AI exit must stay independent of ordinary manual selection");
-      await choose("AI 网站代理", "AI 稳定出口");
+      await choose("AI 代理", "AI 稳定出口");
       assert.equal(await request(), "PRIMARY", "returning AI to automatic selection must use its recovered primary");
       assert.equal(backupStream.child.exitCode, null, backupStream.stderr);
       console.log(JSON.stringify({ core, phase: "independent-manual-ai", apiUsesBackup: true, ordinaryManualUsesPrimary: true, automaticRestored: true }));

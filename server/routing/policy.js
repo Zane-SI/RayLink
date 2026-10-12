@@ -1,9 +1,9 @@
 import { BlockList, isIP } from "node:net";
 
 export const ROUTE_POLICY_GROUPS = Object.freeze({
-  proxy: Object.freeze({ tag: "raylink-auto", name: "RayLink 代理" }),
+  proxy: Object.freeze({ tag: "raylink-auto", name: "普通代理" }),
   unknown: Object.freeze({ tag: "raylink-unknown", name: "未分类流量" }),
-  ai: Object.freeze({ tag: "raylink-ai", name: "AI 网站代理" }),
+  ai: Object.freeze({ tag: "raylink-ai", name: "AI 代理" }),
   aiStable: Object.freeze({ tag: "raylink-ai-stable", name: "AI 稳定出口" }),
   aiManual: Object.freeze({ tag: "raylink-ai-manual", name: "AI 节点选择" }),
   smart: Object.freeze({ tag: "raylink-smart", name: "RayLink 智能" }),

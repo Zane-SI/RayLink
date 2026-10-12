@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { DEFAULT_ROUTE_PROBE_URL } from "./routing/policy.js";
@@ -51,6 +52,23 @@ function ipAddressList(value, fallback, name) {
     throw new Error(`${name} must contain valid IP addresses`);
   }
   return normalized;
+}
+
+function optionalCdnIngress(settingsPath) {
+  if (!settingsPath) return null;
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    const domain = String(settings?.domain || "").trim().toLowerCase().replace(/\.$/, "");
+    if (settings?.sourceTag !== "raylink-vless"
+      || (settings.hostId && settings.hostId !== "local")
+      || isIP(domain) || domain.length > 253 || !domain.includes(".")
+      || !domain.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+      || typeof settings.path !== "string" || !/^\/[a-f0-9]{32,64}$/.test(settings.path)) throw new Error();
+    return { domain, path: settings.path };
+  } catch {
+    // Never echo JSON contents: the path is private deployment configuration.
+    throw new Error("Invalid RAYLINK_CDN_INGRESS_FILE settings");
+  }
 }
 
 export function loadConfig(env = process.env) {
@@ -114,6 +132,7 @@ export function loadConfig(env = process.env) {
     publicOrigin,
     subscriptionOrigin,
     proxyHost: env.RAYLINK_PROXY_HOST || new URL(publicOrigin).hostname,
+    cdnIngress: optionalCdnIngress(env.RAYLINK_CDN_INGRESS_FILE),
     localHostDialAddress: optionalIpAddress(
       env.RAYLINK_LOCAL_HOST_DIAL_ADDRESS,
       "RAYLINK_LOCAL_HOST_DIAL_ADDRESS"

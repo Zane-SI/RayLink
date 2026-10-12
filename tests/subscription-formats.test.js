@@ -4,6 +4,35 @@ import test from "node:test";
 import { buildSubscriptionArtifact } from "../server/subscriptions/formats.js";
 import { buildMultiHostProtocolClientConfig, defaultProtocolConfigs } from "../server/singbox/protocol-catalog.js";
 
+test("Mihomo exposes three main choices with automatic defaults and direct manual node selection", () => {
+  for (const format of ["mihomo", "mihomo-modern"]) {
+    const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
+    const groups = body.split("\nproxy-groups:\n")[1].split("\nrule-providers:")[0]
+      .split(/\n  - name: /).map((entry) => entry.replace(/^  - name: /, ""));
+    const visible = groups.filter((group) => !group.includes("hidden: true"));
+    assert.deepEqual(visible.map((group) => JSON.parse(group.split("\n")[0])), ["普通代理", "AI 代理", "未分类流量"]);
+    const group = (name) => groups.find((entry) => entry.startsWith(JSON.stringify(name) + "\n"));
+    for (const [name, automatic] of [["普通代理", "故障回退"], ["AI 代理", "AI 稳定出口"]]) {
+      assert.match(group(name), new RegExp(`proxies:\\n\\s+- "${automatic}"`));
+      assert.match(group(name), /raylink-tokyo-vless/);
+      assert.match(group(name), /raylink-tokyo-hysteria2/);
+      if (format === "mihomo-modern") {
+        const patterns = JSON.parse(group(name).match(/filter: (.+)/)[1]).split("`");
+        assert.equal(patterns[0], `^${automatic}$`, "Provider ordering must preserve the automatic default");
+      }
+    }
+    assert.match(group("未分类流量"), /- "普通代理"\n\s+- "DIRECT"/);
+    for (const name of ["TCP 稳定", "UDP 高速", "RayLink 智能", "故障回退", "AI 稳定出口", "RayLink 代理", "AI 网站代理"]) {
+      assert.match(group(name), /hidden: true/, `${name} remains an internal/compatible reference`);
+    }
+    assert.ok(!group("AI 节点选择"), "Selecting an AI node must not require a second selector");
+    assert.match(body, /DOMAIN-SUFFIX,chatgpt\.com,AI 代理/);
+    assert.match(body, /DOMAIN-SUFFIX,github\.com,普通代理/);
+    assert.match(body, /dns-query#AI 代理/);
+    assert.match(body, /dns-query#普通代理/);
+  }
+});
+
 test("Mihomo HTTPUpgrade exports use the supported WebSocket upgrade mode and retain handshake metadata", () => {
   for (const format of ["mihomo", "mihomo-modern"]) {
     for (const type of ["vmess", "vless", "trojan"]) {
@@ -28,10 +57,10 @@ test("smart Mihomo subscriptions validate domestic DNS candidates without changi
   for (const format of ["mihomo", "mihomo-modern"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
     assert.match(body, /\n  nameserver:\n    - "https:\/\/223\.5\.5\.5\/dns-query"\n    - "https:\/\/223\.6\.6\.6\/dns-query"\n/);
-    assert.match(body, /\n  fallback:\n    - "https:\/\/1\.1\.1\.1\/dns-query#RayLink 代理"\n/);
+    assert.match(body, /\n  fallback:\n    - "https:\/\/1\.1\.1\.1\/dns-query#普通代理"\n/);
     assert.match(body, /\n  fallback-filter:\n    geoip: false\n    ipcidr:/);
     assert.match(body, /\n      - "::\/0"\n/);
-    for (const [mode, server] of [["direct", "https://223.5.5.5/dns-query"], ["global-proxy", "https://1.1.1.1/dns-query#RayLink 代理"]]) {
+    for (const [mode, server] of [["direct", "https://223.5.5.5/dns-query"], ["global-proxy", "https://1.1.1.1/dns-query#普通代理"]]) {
       const other = buildSubscriptionArtifact({ format, singBoxConfig, routePolicy: { mode } }).body;
       assert.ok(other.includes(`\n  nameserver:\n    - "${server}"\n`));
       assert.doesNotMatch(other, /\n  fallback(?:-filter)?:/);
@@ -63,10 +92,10 @@ test("full smart profiles expose a manual unclassified group after all domain an
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
     const unknown = body.split('name: "未分类流量"')[1]?.split(/\n  - |\nrules:|\nrule-providers:/)[0];
     assert.ok(unknown, `${format} must declare the manual fallback`);
-    assert.match(unknown, /(?:proxies|policies):\n\s+- "RayLink 代理"\n\s+- "DIRECT"/);
+    assert.match(unknown, /(?:proxies|policies):\n\s+- "普通代理"\n\s+- "DIRECT"/);
     const rules = body.split("\nrules:\n")[1].trim();
     assert.ok(rules.endsWith(format === "egern-profile" ? 'policy: "未分类流量"' : '"MATCH,未分类流量"'));
-    for (const [mode, expected] of [["global-proxy", "RayLink 代理"], ["direct", "DIRECT"]]) {
+    for (const [mode, expected] of [["global-proxy", "普通代理"], ["direct", "DIRECT"]]) {
       const other = buildSubscriptionArtifact({ format, singBoxConfig, routePolicy: { mode } }).body;
       assert.ok(!other.includes('name: "未分类流量"'));
       const otherRules = other.split("\nrules:\n")[1].trim();
@@ -82,20 +111,20 @@ test("full exports preserve exact AI dependency matching and custom DNS override
       { match: "domain_suffix", value: "imgix.net", action: "proxy" }
     ] } }).body;
     const dns = body.split("  nameserver-policy:\n")[1].split("  proxy-server-nameserver:")[0];
-    assert.match(dns, /"\+\.challenges\.cloudflare\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 网站代理"/);
+    assert.match(dns, /"\+\.challenges\.cloudflare\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 代理"/);
     assert.match(dns, /"cdn\.workos\.com":\n\s+- "https:\/\/223\.5\.5\.5\/dns-query"/);
     assert.doesNotMatch(dns, /"domain:/);
     assert.doesNotMatch(dns, /"workos\.imgix\.net":/);
     const routes = body.split("\nrules:\n")[1];
-    assert.ok(routes.includes('"DOMAIN-SUFFIX,challenges.cloudflare.com,AI 网站代理"'));
-    assert.ok(routes.includes('"DOMAIN-SUFFIX,claude.com,AI 网站代理"'));
+    assert.ok(routes.includes('"DOMAIN-SUFFIX,challenges.cloudflare.com,AI 代理"'));
+    assert.ok(routes.includes('"DOMAIN-SUFFIX,claude.com,AI 代理"'));
     for (const host of ["aistudio.google.com", "notebooklm.google.com", "copilot.microsoft.com", "copilot.cloud.microsoft", "copilot-proxy.githubusercontent.com", "origin-tracker.githubusercontent.com"]) {
-      assert.ok(routes.includes(`"DOMAIN,${host},AI 网站代理"`));
-      assert.ok(dns.includes(`"${host}":\n      - "https://1.1.1.1/dns-query#AI 网站代理"`));
+      assert.ok(routes.includes(`"DOMAIN,${host},AI 代理"`));
+      assert.ok(dns.includes(`"${host}":\n      - "https://1.1.1.1/dns-query#AI 代理"`));
     }
     const custom = routes.indexOf('DOMAIN,cdn.workos.com,DIRECT');
-    assert.ok(custom >= 0 && custom < routes.indexOf('DOMAIN,cdn.workos.com,AI 网站代理'));
-    for (const domain of ["cloudflare.com", "workos.com", "workoscdn.com", "imgix.net"]) assert.ok(!routes.includes(`DOMAIN-SUFFIX,${domain},AI 网站代理`));
+    assert.ok(custom >= 0 && custom < routes.indexOf('DOMAIN,cdn.workos.com,AI 代理'));
+    for (const domain of ["cloudflare.com", "workos.com", "workoscdn.com", "imgix.net"]) assert.ok(!routes.includes(`DOMAIN-SUFFIX,${domain},AI 代理`));
   }
   const egern = buildSubscriptionArtifact({ format: "egern-profile", singBoxConfig, routePolicy: { rules: [
     { match: "domain", value: "cdn.workos.com", action: "direct" }
@@ -103,16 +132,16 @@ test("full exports preserve exact AI dependency matching and custom DNS override
   const forward = egern.split("  forward:\n")[1].split("  proxy_nameservers:")[0];
   const routes = egern.split("\nrules:\n")[1];
   assert.match(forward, /domain_suffix:\n\s+match: "challenges\.cloudflare\.com"\n\s+value: "ai"/);
-  assert.match(routes, /domain_suffix:\n\s+match: "challenges\.cloudflare\.com"\n\s+policy: "AI 网站代理"/);
-  assert.match(routes, /domain_suffix:\n\s+match: "claudeusercontent\.com"\n\s+policy: "AI 网站代理"/);
+  assert.match(routes, /domain_suffix:\n\s+match: "challenges\.cloudflare\.com"\n\s+policy: "AI 代理"/);
+  assert.match(routes, /domain_suffix:\n\s+match: "claudeusercontent\.com"\n\s+policy: "AI 代理"/);
   for (const host of ["aistudio.google.com", "copilot.microsoft.com", "copilot.cloud.microsoft"]) {
     assert.ok(forward.includes(`domain:\n        match: "${host}"\n        value: "ai"`));
-    assert.ok(routes.includes(`domain:\n      match: "${host}"\n      policy: "AI 网站代理"`));
+    assert.ok(routes.includes(`domain:\n      match: "${host}"\n      policy: "AI 代理"`));
   }
   const customDns = forward.indexOf('match: "cdn.workos.com"\n        value: "domestic"');
   const customRoute = routes.indexOf('match: "cdn.workos.com"\n      policy: "DIRECT"');
   assert.ok(customDns >= 0 && customDns < forward.indexOf('match: "cdn.workos.com"\n        value: "ai"'));
-  assert.ok(customRoute >= 0 && customRoute < routes.indexOf('match: "cdn.workos.com"\n      policy: "AI 网站代理"'));
+  assert.ok(customRoute >= 0 && customRoute < routes.indexOf('match: "cdn.workos.com"\n      policy: "AI 代理"'));
 });
 
 test("Egern preserves manual default selection, system DNS and domestic domain routing", () => {
@@ -130,7 +159,7 @@ test("Egern preserves manual default selection, system DNS and domestic domain r
 test("AI subscriptions choose an independent stable exit and expose concrete node choices", () => {
   for (const format of ["mihomo", "egern-profile"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
-    const aiSection = body.split('name: "AI 网站代理"')[1].split(/\n  - /)[0];
+    const aiSection = body.split('name: "AI 代理"')[1].split(/\n  - /)[0];
     assert.match(aiSection, /(?:proxies|policies):\n\s+- "AI 稳定出口"/);
     assert.match(aiSection, /- "raylink-tokyo-vless"/);
     assert.match(body, /name: "AI 稳定出口"/);
@@ -141,7 +170,7 @@ test("AI subscriptions choose an independent stable exit and expose concrete nod
   }
   const mihomo = buildSubscriptionArtifact({ format: "mihomo", singBoxConfig }).body;
   assert.match(mihomo, /store-selected: true/);
-  assert.match(mihomo, /"\+\.openai\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 网站代理"/);
+  assert.match(mihomo, /"\+\.openai\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 代理"/);
 });
 
 test("manual AI exports exclude automatic groups and unauthorized Host candidates", () => {
@@ -156,8 +185,8 @@ test("manual AI exports exclude automatic groups and unauthorized Host candidate
     });
     for (const format of ["mihomo", "mihomo-modern", "egern-profile"]) {
       const body = buildSubscriptionArtifact({ format, singBoxConfig: nativeConfig, routePolicy }).body;
-      const ai = body.split('name: "AI 网站代理"')[1].split(/\n  - |\nrules:|\nrule-providers:/)[0];
-      assert.doesNotMatch(ai, /AI 稳定出口|AI 节点选择|RayLink 智能|TCP 稳定|UDP 高速|故障回退|网络环境|RayLink 代理/);
+      const ai = body.split('name: "AI 代理"')[1].split(/\n  - |\nrules:|\nrule-providers:/)[0];
+      assert.doesNotMatch(ai, /AI 稳定出口|AI 节点选择|RayLink 智能|TCP 稳定|UDP 高速|故障回退|网络环境|普通代理/);
       assert.doesNotMatch(ai, /raylink-other-region/);
       if (hostId === "no-longer-authorized") {
         assert.match(ai, /- "REJECT"/);
@@ -185,7 +214,7 @@ test("Egern AI DNS follows its exit while explicit user IP rules retain priority
   assert.match(body, /ai:\n\s+- "https:\/\/9\.9\.9\.9\/dns-query"/);
   assert.match(body, /match: "openai\.com"\n\s+value: "ai"/);
   const rules = body.split("\nrules:\n")[1];
-  const reserved = rules.indexOf('match: "9.9.9.9/32"\n      policy: "AI 网站代理"');
+  const reserved = rules.indexOf('match: "9.9.9.9/32"\n      policy: "AI 代理"');
   const custom = rules.indexOf('match: "9.9.9.9/32"\n      policy: "DIRECT"');
   assert.ok(custom >= 0 && reserved > custom);
   const direct = buildSubscriptionArtifact({ format: "egern-profile", singBoxConfig, routePolicy: { mode: "direct" } }).body;
@@ -228,12 +257,12 @@ test("full client profiles carry the same offline China exact, suffix, regex and
 
 test("explicit overseas services precede China GeoIP and keep matching remote DNS", () => {
   const mihomo = buildSubscriptionArtifact({ format: "mihomo", singBoxConfig }).body;
-  assert.ok(mihomo.includes('DOMAIN-SUFFIX,google.com,RayLink 代理'));
-  assert.ok(mihomo.indexOf('DOMAIN-SUFFIX,google.com,RayLink 代理') < mihomo.indexOf('RULE-SET,raylink-cn-ip,DIRECT'));
-  assert.match(mihomo, /"\+\.google\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#RayLink 代理"/);
+  assert.ok(mihomo.includes('DOMAIN-SUFFIX,google.com,普通代理'));
+  assert.ok(mihomo.indexOf('DOMAIN-SUFFIX,google.com,普通代理') < mihomo.indexOf('RULE-SET,raylink-cn-ip,DIRECT'));
+  assert.match(mihomo, /"\+\.google\.com":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#普通代理"/);
   const egern = buildSubscriptionArtifact({ format: "egern-profile", singBoxConfig }).body;
   const rules = egern.split("\nrules:\n")[1];
-  assert.match(rules, /match: "google\.com"\n\s+policy: "RayLink 代理"/);
+  assert.match(rules, /match: "google\.com"\n\s+policy: "普通代理"/);
   assert.ok(rules.indexOf('match: "google.com"') < rules.indexOf('match: "1.0.1.0/24"'));
   assert.match(egern, /match: "google\.com"\n\s+value: "overseas"/);
 });
@@ -314,7 +343,7 @@ test("Mihomo resolves split-DNS private hosts after domain decisions in every mo
     }).body;
     const rules = body.split("\nrules:\n")[1].trim().split("\n").map((line) => JSON.parse(line.trim().slice(2)));
     const privateRule = rules.indexOf("IP-CIDR,10.0.0.0/8,DIRECT");
-    assert.ok(privateRule > rules.indexOf("DOMAIN,corp.example,RayLink 代理"));
+    assert.ok(privateRule > rules.indexOf("DOMAIN,corp.example,普通代理"));
     assert.ok(privateRule < rules.findIndex((rule) => rule.startsWith("MATCH,")));
     if (mode === "smart") {
       assert.ok(privateRule > rules.indexOf("RULE-SET,raylink-cn-domain,DIRECT"));
@@ -447,7 +476,7 @@ test("Mihomo subscription contains compatible nodes, smart groups, routing and D
   assert.match(artifact.body, /name: "RayLink 智能"/);
   assert.match(artifact.body, /name: "TCP 稳定"/);
   assert.match(artifact.body, /name: "UDP 高速"/);
-  assert.match(artifact.body, /name: "AI 网站代理"/);
+  assert.match(artifact.body, /name: "AI 代理"/);
   assert.match(artifact.body, /lazy: false/);
   assert.match(artifact.body, /max-failed-times: 3/);
   assert.match(artifact.body, /expected-status: 204/);
@@ -461,15 +490,15 @@ test("Mihomo subscription contains compatible nodes, smart groups, routing and D
   );
   assert.match(
     artifact.body,
-    /name: "AI 网站代理"[\s\S]*?proxies:[\s\S]*?- "故障回退"/
+    /name: "AI 代理"[\s\S]*?proxies:[\s\S]*?- "AI 稳定出口"/
   );
   assert.match(artifact.body, /store-selected: true/);
   assert.match(
     artifact.body,
     /name: "手动选择"[\s\S]*?proxies:[\s\S]*?- "raylink-tokyo-vless"[\s\S]*?- "raylink-tokyo-hysteria2"/
   );
-  assert.match(artifact.body, /DOMAIN-SUFFIX,openai\.com,AI 网站代理/);
-  assert.match(artifact.body, /DOMAIN-SUFFIX,chatgpt\.com,AI 网站代理/);
+  assert.match(artifact.body, /DOMAIN-SUFFIX,openai\.com,AI 代理/);
+  assert.match(artifact.body, /DOMAIN-SUFFIX,chatgpt\.com,AI 代理/);
   assert.match(artifact.body, /RULE-SET,raylink-cn-ip,DIRECT/);
   assert.doesNotMatch(artifact.body, /RULE-SET,raylink-cn-ip,DIRECT,no-resolve/);
   assert.match(artifact.body, /MATCH,未分类流量/);
@@ -483,7 +512,7 @@ test("Mihomo subscription contains compatible nodes, smart groups, routing and D
   );
   assert.match(
     artifact.body,
-    /nameserver:[\s\S]*?- "https:\/\/1\.1\.1\.1\/dns-query#RayLink 代理"/
+    /nameserver:[\s\S]*?- "https:\/\/1\.1\.1\.1\/dns-query#普通代理"/
   );
 });
 
@@ -500,14 +529,14 @@ test("modern Mihomo shares health checks while legacy exports retain standalone 
   assert.equal((modern.body.match(/health-check:/g) || []).length, 1);
   assert.match(modern.body, /health-check:\n      enable: true[\s\S]*?timeout: 12000/);
   const group = (body, name) => body.split(`name: "${name}"`)[1].split(/\n  - |\nrule-providers:/)[0];
-  for (const name of ["RayLink 代理", "AI 网站代理", "RayLink 智能", "TCP 稳定", "UDP 高速", "故障回退", "AI 稳定出口", "手动选择"]) {
+  for (const name of ["普通代理", "AI 代理", "RayLink 智能", "TCP 稳定", "UDP 高速", "故障回退", "AI 稳定出口", "手动选择"]) {
     assert.match(modern.body, new RegExp(`name: "${name}"`));
     assert.equal(group(modern.body, name).match(/type: "([^"\n]+)"/)[1], group(legacy.body, name).match(/type: "([^"\n]+)"/)[1]);
   }
   for (const body of [legacy.body, modern.body]) {
     for (const name of ["RayLink 智能", "TCP 稳定", "UDP 高速", "故障回退", "AI 稳定出口"]) assert.match(group(body, name), /timeout: 12000/);
   }
-  const ai = group(modern.body, "AI 网站代理");
+  const ai = group(modern.body, "AI 代理");
   assert.match(ai, /proxies:\n\s+- "AI 稳定出口"/);
   const filter = (name) => JSON.parse(group(modern.body, name).match(/filter: (.+)/)[1]).split("`").map((pattern) => new RegExp(pattern));
   assert.ok(filter("TCP 稳定").some((pattern) => pattern.test("raylink-tokyo-vless")));
@@ -635,10 +664,10 @@ test("global and direct modes keep DNS behavior aligned across client formats", 
   }).body;
 
   assert.doesNotMatch(globalMihomo, /"rule-set:raylink-cn-domain":/);
-  assert.match(globalMihomo, /MATCH,RayLink 代理/);
+  assert.match(globalMihomo, /MATCH,普通代理/);
   assert.match(globalEgern, /match: "\*"[\s\S]*?value: "overseas"/);
   assert.match(directMihomo, /nameserver:[\s\S]*?223\.5\.5\.5/);
-  assert.doesNotMatch(directMihomo, /1\.1\.1\.1\/dns-query#RayLink 代理/);
+  assert.doesNotMatch(directMihomo, /1\.1\.1\.1\/dns-query#普通代理/);
   assert.match(directEgern, /match: "\*"[\s\S]*?value: "domestic"/);
 });
 
@@ -811,12 +840,12 @@ test("Egern profile adds smart TCP UDP manual policies, routing and encrypted DN
   assert.match(artifact.body, /default_policy: "故障回退"/);
   assert.match(artifact.body, /- select:/);
   assert.match(artifact.body, /name: "手动选择"/);
-  assert.match(artifact.body, /name: "AI 网站代理"/);
+  assert.match(artifact.body, /name: "AI 代理"/);
   assert.match(artifact.body, /^rules:/m);
   assert.match(artifact.body, /match: "openai.com"/);
   assert.match(
     artifact.body,
-    /match: "openai\.com"[\s\S]*?policy: "AI 网站代理"/
+    /match: "openai\.com"[\s\S]*?policy: "AI 代理"/
   );
   assert.match(artifact.body, /match: "baidu\.com"/);
   assert.match(artifact.body, /policy: "DIRECT"/);

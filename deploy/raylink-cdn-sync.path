@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the main RayLink runtime for CDN user changes
+
+[Path]
+PathChanged=/var/lib/raylink/sing-box/config.json
+Unit=raylink-cdn-sync.service
+
+[Install]
+WantedBy=multi-user.target

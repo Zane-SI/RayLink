@@ -124,10 +124,10 @@ async function check(core, scenario) {
       hosts: scenario === "missing" ? hosts.slice(1)
         : scenario === "ineligible" ? hosts.map((host) => host.id === hostId ? { ...host, protocols: [] } : host) : hosts
     });
-    const aiGroup = core === "sing-box" ? "raylink-ai" : "AI 网站代理";
+    const aiGroup = core === "sing-box" ? "raylink-ai" : "AI 代理";
     const stableGroup = core === "sing-box" ? "raylink-ai-stable" : "AI 稳定出口";
-    const ordinaryGroup = core === "sing-box" ? "raylink-auto" : "RayLink 代理";
-    const manualGroup = core === "mihomo-modern" ? "AI 节点选择" : aiGroup;
+    const ordinaryGroup = core === "sing-box" ? "raylink-auto" : "普通代理";
+    const manualGroup = aiGroup;
     let args;
     if (core === "sing-box") {
       const fullPath = join(directory, "full.json"); await writeFile(fullPath, JSON.stringify(generated));
@@ -158,8 +158,8 @@ async function check(core, scenario) {
         .replaceAll("https://223.5.5.5/dns-query", `${dnsEndpoint}#DIRECT`)
         .replaceAll("https://223.6.6.6/dns-query", `${dnsEndpoint}#DIRECT`)
         .replaceAll('"223.5.5.5"', JSON.stringify(dnsEndpoint))
-        .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", `${dnsEndpoint}#DIRECT`)
-        .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", `${dnsEndpoint}#DIRECT`);
+        .replaceAll("https://1.1.1.1/dns-query#AI 代理", `${dnsEndpoint}#DIRECT`)
+        .replaceAll("https://1.1.1.1/dns-query#普通代理", `${dnsEndpoint}#DIRECT`);
       const path = join(directory, "simulation.yaml"); await writeFile(path, yaml);
       await run(binary, ["-t", "-d", directory, "-f", path]); args = ["-d", directory, "-f", path];
     }
@@ -187,24 +187,18 @@ async function check(core, scenario) {
     }
     // Use the public ordinary selector to prove the other Host is usable,
     // regardless of its order or the clients' unrelated automatic selection.
-    if (core === "sing-box") assert.equal((await select(ordinaryGroup, otherTag)).status, 204);
-    else {
-      assert.equal((await select("手动选择", otherTag)).status, 204);
-      assert.equal((await select(ordinaryGroup, "手动选择")).status, 204);
-    }
+    assert.equal((await select(ordinaryGroup, otherTag)).status, 204);
     assert.equal(await request("ordinary.example"), other.name);
     if (scenario === "present") {
       const state = await proxies();
       assert.deepEqual(state[stableGroup].all, [tcpTag, udpTag], "AI automatic candidates must contain only the pinned Host, TCP then UDP");
-      assert.deepEqual(state[manualGroup].all, core === "mihomo-modern" ? [tcpTag, udpTag] : [stableGroup, tcpTag, udpTag]);
-      if (core === "mihomo-modern") assert.deepEqual(state[aiGroup].all, [stableGroup, manualGroup]);
+      assert.deepEqual(state[manualGroup].all, [stableGroup, tcpTag, udpTag]);
       for (const forbidden of [otherTag, ordinaryGroup, "DIRECT"]) {
         const rejected = await select(manualGroup, forbidden);
         assert.ok(rejected.status >= 400, `${manualGroup} accepted an unpinned choice: ${forbidden}`);
       }
       for (const [tag, marker] of [[tcpTag, tcp.name], [udpTag, udp.name]]) {
         assert.equal((await select(manualGroup, tag)).status, 204);
-        if (core === "mihomo-modern") assert.equal((await select(aiGroup, manualGroup)).status, 204);
         assert.equal(await request("claude.ai"), marker);
         assert.equal(await request("custom-ai.example"), marker);
       }

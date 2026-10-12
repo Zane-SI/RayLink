@@ -138,6 +138,14 @@ try {
     }
   }
   await load();
+  const initialGroups = await proxies();
+  assert.deepEqual(Object.values(initialGroups).filter((group) => group.all && group.name !== "GLOBAL" && !group.hidden)
+    .map((group) => group.name).sort(), ["普通代理", "AI 代理", "未分类流量"].sort());
+  assert.equal(initialGroups["普通代理"].now, "故障回退");
+  assert.equal(initialGroups["AI 代理"].now, "AI 稳定出口");
+  for (const group of ["普通代理", "AI 代理"]) {
+    assert.ok(names.every((name) => initialGroups[group].all.includes(name)), "Manual nodes must be selectable in the main group");
+  }
   await waitFor(async () => { const state = await proxies(); return names.every((name) => (state[name]?.extra?.[probeUrl]?.history?.length || 0) > 0); }, "startup health checks did not complete");
   console.log(JSON.stringify({ phase: "startup", heads }));
   assert.equal(heads, 14, "Seven proxies must have one unified-delay check each (two HEAD requests), rather than a separate check per group");
@@ -182,7 +190,8 @@ try {
       const state = await proxies();
       return names.every((name) => state[name].extra?.[probeUrl]?.history?.length > 0);
     }, "Failover fixture must begin with all nodes verified healthy");
-    await select("AI 稳定出口");
+    assert.equal((await proxies())["AI 代理"].now, "AI 稳定出口", `${format}: AI must default to automatic recovery`);
+    await select("AI 代理");
     const initialAi = (await proxies())["AI 稳定出口"].now;
     assert.equal(initialAi, names[0]);
     await stop(servers.get("vmess"));

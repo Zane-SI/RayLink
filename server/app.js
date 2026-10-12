@@ -577,7 +577,8 @@ export async function createRayLinkApp(options) {
   const resolveClientEndpointOverrides = async (hosts) => Object.fromEntries(
     (await Promise.all(hosts.map(async (host) => {
       const endpoint = host.endpointDomain || host.address;
-      if (isIP(endpoint)) return null;
+      if (isIP(endpoint)
+        || String(endpoint).toLowerCase().replace(/\.$/, "") === options.cdnIngress?.domain) return null;
       const fallbackAddress = host.id === "local" ? localHostDialAddress : host.endpointDomain && isIP(host.address) ? host.address : "";
       const configuredFallback = isIP(fallbackAddress)
         ? { address: fallbackAddress, source: "configured-fallback" }
@@ -1141,6 +1142,7 @@ export async function createRayLinkApp(options) {
     const singBoxConfig = buildUserClientConfig({
       credential,
       hosts: eligibleHosts,
+      cdnIngress: options.cdnIngress,
       probeUrl: options.protocolProbeUrl,
       routePolicy: store.routingPolicy(),
       // A client's rule-set downloader does not inherit the browser/Node CA
@@ -1149,7 +1151,8 @@ export async function createRayLinkApp(options) {
         ? new URL("/rule-sets/", currentSubscriptionOrigin()).toString()
         : null
     });
-    return { singBoxConfig, endpointOverrides };
+    return { singBoxConfig, endpointOverrides,
+      dynamicEndpointHostnames: options.cdnIngress ? [options.cdnIngress.domain] : [] };
   };
   const nodeDomains = new NodeDomains({ store, fetchImpl: options.nodeDomainFetch, lookup: options.nodeDomainLookup,
     pollMs: options.nodeDomainPollMs, waitMs: options.nodeDomainWaitMs });

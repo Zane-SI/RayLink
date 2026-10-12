@@ -543,8 +543,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     tcp,
     udp,
     fallback: fallbackGroups,
-    manual: manualCandidates,
-    policyChoices
+    manual: manualCandidates
   } = candidates;
   // The compiler carries Host membership through this native group's concrete
   // members. Never infer a Host from a display name or a tag prefix.
@@ -559,28 +558,18 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     {
       name: ROUTE_POLICY_GROUPS.proxy.name,
       type: "select",
-      proxies: policyChoices
+      proxies: [ROUTE_POLICY_GROUPS.fallback.name, ...names]
+    },
+    {
+      name: ROUTE_POLICY_GROUPS.ai.name,
+      type: "select",
+      proxies: aiManual ? (aiNames.length ? aiNames : ["REJECT"])
+        : [ROUTE_POLICY_GROUPS.aiStable.name, ...aiNames]
     },
     ...(routePolicy.mode === "smart" ? [{
       name: ROUTE_POLICY_GROUPS.unknown.name,
       type: "select",
       proxies: [ROUTE_POLICY_GROUPS.proxy.name, ROUTE_POLICY_GROUPS.direct.name]
-    }] : []),
-    {
-      name: ROUTE_POLICY_GROUPS.ai.name,
-      type: "select",
-      proxies: aiManual ? (aiNames.length ? aiNames : ["REJECT"]) : [ROUTE_POLICY_GROUPS.aiStable.name,
-        ...(sharedHealthChecks ? [ROUTE_POLICY_GROUPS.aiManual.name] : aiNames),
-        ...(aiPinned ? [] : policyChoices)]
-    },
-    // Mihomo prepends provider nodes before explicit group proxies. Keep the
-    // automatic top-level AI selector free of `use`, or it defaults to an
-    // individual node and bypasses recovery. Manual mode intentionally exposes
-    // only concrete nodes and does not need this extra child selector.
-    ...(sharedHealthChecks && !aiManual ? [{
-      name: ROUTE_POLICY_GROUPS.aiManual.name,
-      type: "select",
-      proxies: aiNames.length ? aiNames : ["REJECT"]
     }] : []),
     {
       name: ROUTE_POLICY_GROUPS.smart.name,
@@ -646,8 +635,15 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       name: ROUTE_POLICY_GROUPS.manual.name,
       type: "select",
       proxies: manualCandidates
-    }
-  ];
+    },
+    // Keep existing client overrides and chain references valid after renaming.
+    { name: "RayLink 代理", type: "select", proxies: [ROUTE_POLICY_GROUPS.proxy.name] },
+    { name: "AI 网站代理", type: "select", proxies: [ROUTE_POLICY_GROUPS.ai.name] }
+  ].map((group) => ({
+    ...group,
+    ...(![ROUTE_POLICY_GROUPS.proxy.name, ROUTE_POLICY_GROUPS.ai.name, ROUTE_POLICY_GROUPS.unknown.name].includes(group.name)
+      ? { hidden: true } : {})
+  }));
   const providerName = "raylink-health";
   const sharedGroups = sharedHealthChecks ? proxyGroups.map((group) => {
     const nodeNames = group.proxies.filter((name) => names.includes(name));
@@ -658,9 +654,10 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       ...sharedGroup,
       ...(groupNames.length ? { proxies: groupNames } : {}),
       use: [providerName],
-      // Mihomo's ordered filters preserve fallback priority as well as exact
-      // membership. Encode its delimiter if it occurs in a node's literal name.
-      filter: nodeNames.map((name) => `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("`", "\\x60")}$`).join("`")
+      // Ordered filters reorder explicit groups too. Include them first so
+      // provider nodes cannot displace the automatic default. Exact patterns
+      // also preserve Host membership and names containing the delimiter.
+      filter: group.proxies.map((name) => `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("`", "\\x60")}$`).join("`")
     };
   }) : proxyGroups;
   const pinnedEndpoints = normalizedEndpointOverrides(endpointOverrides);
@@ -1130,8 +1127,15 @@ export function buildSubscriptionArtifact({
   format,
   singBoxConfig,
   routePolicy,
-  endpointOverrides = {}
+  endpointOverrides: inputEndpointOverrides = {},
+  dynamicEndpointHostnames = []
 }) {
+  // CDN endpoints must resolve at the client, never to an origin fallback or
+  // a cached edge IP. Apply this once for every supported subscription format.
+  const canonicalHostname = value => String(value).trim().toLowerCase().replace(/\.$/, "");
+  const dynamicHosts = new Set(dynamicEndpointHostnames.map(canonicalHostname));
+  const endpointOverrides = Object.fromEntries(Object.entries(inputEndpointOverrides || {})
+    .filter(([hostname]) => !dynamicHosts.has(canonicalHostname(hostname))));
   if (format === "singbox") {
     return {
       contentType: "application/json; charset=utf-8",
