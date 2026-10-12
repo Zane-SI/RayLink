@@ -83,8 +83,8 @@ try {
     .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "redir-host"\n  listen: "127.0.0.1:${dnsPort}"`)
     .replaceAll("https://223.5.5.5/dns-query", dnsEndpoint("domestic"))
     .replaceAll("https://223.6.6.6/dns-query", dnsEndpoint("domestic"))
-    .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", dnsEndpoint("ai"))
-    .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", dnsEndpoint("remote"));
+    .replaceAll("https://1.1.1.1/dns-query#AI 代理", dnsEndpoint("ai"))
+    .replaceAll("https://1.1.1.1/dns-query#普通代理", dnsEndpoint("remote"));
   const start = yaml.indexOf("\nproxies:\n"); const end = yaml.indexOf("\nproxy-groups:\n", start);
   assert.ok(start > 0 && end > start);
   yaml = yaml.slice(0, start) + `\nproxies:\n  - name: "tcp-primary"\n    type: http\n    server: 127.0.0.1\n    port: ${primaryPort}\n  - name: "tcp-ai"\n    type: http\n    server: 127.0.0.1\n    port: ${aiPort}\n` + yaml.slice(end);
@@ -98,7 +98,7 @@ try {
   child.stdout.on("data", (data) => { logs += data; }); child.stderr.on("data", (data) => { logs += data; });
   for (let i = 0; i < 200 && !logs.includes("proxy listening at") && child.exitCode === null; i++) await delay(25);
   assert.ok(logs.includes("proxy listening at"), logs);
-  const selected = await fetch(`http://127.0.0.1:${controllerPort}/proxies/${encodeURIComponent("AI 网站代理")}`, { method: "PUT", body: JSON.stringify({ name: "tcp-ai" }), headers: { "content-type": "application/json" } });
+  const selected = await fetch(`http://127.0.0.1:${controllerPort}/proxies/${encodeURIComponent("AI 代理")}`, { method: "PUT", body: JSON.stringify({ name: "tcp-ai" }), headers: { "content-type": "application/json" } });
   assert.equal(selected.status, 204);
   for (const [domain, expectedDns, expectedRoute] of [
     ["qianshouapp.cn", "domestic", "DIRECT"],

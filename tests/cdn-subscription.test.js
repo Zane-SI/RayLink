@@ -33,11 +33,10 @@ test("CDN entry reuses the user's UUID, preserves seven nodes and joins TCP, sma
   }
   for (const format of ["mihomo", "mihomo-modern"]) {
     const { body } = buildSubscriptionArtifact({ format, singBoxConfig: after });
-    for (const name of ["TCP 稳定", "故障回退", "RayLink 智能", "AI 网站代理"]) {
+    for (const name of ["TCP 稳定", "故障回退", "RayLink 智能", "AI 代理"]) {
       const candidates = section(body, name);
-      // Modern exports use a filtered inline provider and a separate AI node selector.
-      assert.match(name === "AI 网站代理" && format === "mihomo-modern"
-        ? section(body, "AI 节点选择") : candidates, /raylink-local-vless-cdn/, `${format}: ${name}`);
+      // Both formats expose manual CDN selection in the primary AI group.
+      assert.match(candidates, /raylink-local-vless-cdn/, `${format}: ${name}`);
     }
     const node = section(body, tag);
     assert.match(node, /server: "cdn.example.com"/);

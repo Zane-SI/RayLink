@@ -124,9 +124,9 @@ async function check(core, scenario) {
       hosts: scenario === "missing" ? hosts.slice(1)
         : scenario === "ineligible" ? hosts.map((host) => host.id === hostId ? { ...host, protocols: [] } : host) : hosts
     });
-    const aiGroup = core === "sing-box" ? "raylink-ai" : "AI 网站代理";
+    const aiGroup = core === "sing-box" ? "raylink-ai" : "AI 代理";
     const stableGroup = core === "sing-box" ? "raylink-ai-stable" : "AI 稳定出口";
-    const ordinaryGroup = core === "sing-box" ? "raylink-auto" : "RayLink 代理";
+    const ordinaryGroup = core === "sing-box" ? "raylink-auto" : "普通代理";
     const manualGroup = core === "mihomo-modern" ? "AI 节点选择" : aiGroup;
     let args;
     if (core === "sing-box") {
@@ -158,8 +158,8 @@ async function check(core, scenario) {
         .replaceAll("https://223.5.5.5/dns-query", `${dnsEndpoint}#DIRECT`)
         .replaceAll("https://223.6.6.6/dns-query", `${dnsEndpoint}#DIRECT`)
         .replaceAll('"223.5.5.5"', JSON.stringify(dnsEndpoint))
-        .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", `${dnsEndpoint}#DIRECT`)
-        .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", `${dnsEndpoint}#DIRECT`);
+        .replaceAll("https://1.1.1.1/dns-query#AI 代理", `${dnsEndpoint}#DIRECT`)
+        .replaceAll("https://1.1.1.1/dns-query#普通代理", `${dnsEndpoint}#DIRECT`);
       const path = join(directory, "simulation.yaml"); await writeFile(path, yaml);
       await run(binary, ["-t", "-d", directory, "-f", path]); args = ["-d", directory, "-f", path];
     }

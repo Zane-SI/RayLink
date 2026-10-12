@@ -97,8 +97,8 @@ try {
     .replaceAll("https://223.5.5.5/dns-query", dnsEndpoint("domestic"))
     .replaceAll("https://223.6.6.6/dns-query", dnsEndpoint("domestic"))
     .replaceAll('"223.5.5.5"', JSON.stringify(dnsEndpoint("domestic").replace("#DIRECT", "")))
-    .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", dnsEndpoint("ai"))
-    .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", dnsEndpoint("remote"));
+    .replaceAll("https://1.1.1.1/dns-query#AI 代理", dnsEndpoint("ai"))
+    .replaceAll("https://1.1.1.1/dns-query#普通代理", dnsEndpoint("remote"));
   const fixtureProxies = `  - name: "tcp-primary"\n    type: http\n    server: 127.0.0.1\n    port: ${primaryPort}\n  - name: "tcp-ai"\n    type: http\n    server: 127.0.0.1\n    port: ${aiPort}\n`;
   if (format === "mihomo-modern") {
     const start = yaml.indexOf("    payload:\n"); const end = yaml.indexOf("    health-check:\n", start);
@@ -115,9 +115,7 @@ try {
   child.stdout.on("data", (data) => { logs += data; }); child.stderr.on("data", (data) => { logs += data; });
   for (let i = 0; i < 200 && !logs.includes("proxy listening at") && child.exitCode === null; i++) await delay(25);
   assert.ok(logs.includes("proxy listening at"), logs);
-  const selections = format === "mihomo-modern"
-    ? [["AI 节点选择", "tcp-ai"], ["AI 网站代理", "AI 节点选择"]]
-    : [["AI 网站代理", "tcp-ai"]];
+  const selections = [["AI 代理", "tcp-ai"]];
   for (const [group, name] of selections) {
     const selected = await fetch(`http://127.0.0.1:${controllerPort}/proxies/${encodeURIComponent(group)}`, { method: "PUT", body: JSON.stringify({ name }), headers: { "content-type": "application/json" } });
     assert.equal(selected.status, 204);

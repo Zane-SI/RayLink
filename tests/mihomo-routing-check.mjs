@@ -63,7 +63,7 @@ try {
     const proxyPort = await unusedPort();
     let yaml = artifact.body
       .replace("mixed-port: 7890", `mixed-port: ${proxyPort}`)
-      .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", `udp://127.0.0.1:${dns.address().port}#DIRECT`);
+      .replaceAll("https://1.1.1.1/dns-query#普通代理", `udp://127.0.0.1:${dns.address().port}#DIRECT`);
     if (variant === "without-late-bypass") {
       yaml = yaml.replace(/^  - "IP-CIDR6?,[^\n]+,DIRECT"\n/gm, "");
     }
@@ -94,7 +94,7 @@ try {
         assert.match(logs, /IPCIDR\(127\.0\.0\.0\/8\).*DIRECT/);
       } else {
         assert.notEqual(body, "split-dns-direct-ok");
-        assert.match(logs, /dial RayLink 代理/);
+        assert.match(logs, /dial 普通代理/);
       }
       console.log(`${variant}: passed`);
     } finally {

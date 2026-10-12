@@ -76,7 +76,7 @@ async function waitForProfile(format, nodes, aiNodes) {
   // Mihomo starts its controller before executor.ApplyConfig installs proxies,
   // listeners and providers. /version alone therefore says nothing about the
   // requested profile. Keep the strict membership assertions below this gate.
-  const groups = ["AI 网站代理", "未分类流量", "RayLink 代理", "手动选择"];
+  const groups = ["AI 代理", "未分类流量", "普通代理", "手动选择"];
   const paths = ["/configs", "/proxies", "/providers/rules", ...(format === "mihomo-modern" ? ["/providers/proxies"] : [])];
   let observed = {};
   const requireRunning = () => {
@@ -104,7 +104,7 @@ async function waitForProfile(format, nodes, aiNodes) {
         statuses: Object.fromEntries(results.map(({ path, status }) => [path, status])),
         missingGroups: groups.filter((name) => !Array.isArray(proxies[name]?.all) || !proxies[name].all.length),
         missingNodes: nodes.filter((name) => !proxies[name]),
-        aiCandidates: proxies["AI 网站代理"]?.all || [],
+        aiCandidates: proxies["AI 代理"]?.all || [],
         providerCandidates: providerNodes,
         ruleCounts: ["raylink-cn-domain", "raylink-cn-ip"].map((name) => rules[name]?.ruleCount || 0),
         listenerReady: values["/configs"]?.["mixed-port"] === mixedPort
@@ -282,8 +282,8 @@ try {
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
       .replaceAll("https://223.6.6.6/dns-query", domestic.endpoint)
-      .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", aiDns.endpoint)
-      .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", remote.endpoint)
+      .replaceAll("https://1.1.1.1/dns-query#AI 代理", aiDns.endpoint)
+      .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
       .replaceAll('"system"', JSON.stringify(domestic.endpoint));
     if (format === "mihomo") {
@@ -315,7 +315,7 @@ try {
       try { return (await fetch(`${base}/version`, { signal: AbortSignal.timeout(1000) })).ok; } catch { return false; }
     }, "Native Mihomo controller did not start");
     if (deferredStartup && format === "mihomo-modern") {
-      const absent = await fetch(`${base}/proxies/${encodeURIComponent("AI 网站代理")}`, { signal: AbortSignal.timeout(1000) });
+      const absent = await fetch(`${base}/proxies/${encodeURIComponent("AI 代理")}`, { signal: AbortSignal.timeout(1000) });
       assert.equal(absent.status, 404, "Controller-only bootstrap must not contain subscription groups");
       await absent.body?.cancel();
       console.log(JSON.stringify({ format, phase: "controller-before-profile", versionAvailable: true, aiGroupStatus: 404 }));
@@ -327,17 +327,17 @@ try {
       pendingStartup = undefined;
       if (failure) throw failure;
     }
-    const aiGroup = await api(`/proxies/${encodeURIComponent("AI 网站代理")}`);
+    const aiGroup = await api(`/proxies/${encodeURIComponent("AI 代理")}`);
     assert.equal(aiGroup.type, "Selector");
     assert.deepEqual(aiGroup.all, expectedAi, `${format}: AI provider membership must not add other Hosts or automatic groups`);
     assert.equal(aiGroup.now, aiFirst);
     const unknown = await api(`/proxies/${encodeURIComponent("未分类流量")}`);
     assert.equal(unknown.type, "Selector");
-    assert.deepEqual(unknown.all, ["RayLink 代理", "DIRECT"]);
-    assert.equal(unknown.now, "RayLink 代理");
+    assert.deepEqual(unknown.all, ["普通代理", "DIRECT"]);
+    assert.equal(unknown.now, "普通代理");
     await select("手动选择", ordinary);
-    await select("RayLink 代理", "手动选择");
-    await select("AI 网站代理", aiChosen);
+    await select("普通代理", "手动选择");
+    await select("AI 代理", aiChosen);
 
     // A geographical answer must not steal explicit AI, overseas or custom
     // rules. Prime and inspect native DNS before exercising those routes.
@@ -352,16 +352,16 @@ try {
       const fakeIp = await dnsAddress(domain, dnsPort);
       assert.match(fakeIp, /^198\.18\./, `${domain}: must use native fake-IP recovery`);
       const connection = await request(domain, targetPort, domesticIp ? "DIRECT" : "ORDINARY", domesticIp ? "RuleSet" : "Match",
-        domesticIp ? ["DIRECT"] : [ordinary, "手动选择", "RayLink 代理", "未分类流量"], fakeIp);
+        domesticIp ? ["DIRECT"] : [ordinary, "手动选择", "普通代理", "未分类流量"], fakeIp);
       assert.ok(remote.queries.some((query) => query.domain === domain && query.address === address), `${domain}: route lookup must receive ${address}`);
       if (domesticIp) {
         assert.equal(connection.rulePayload, "raylink-cn-ip", `${domain}: must match the bundled geographic IP provider`);
         assert.ok(directDial.queries.some((query) => query.domain === domain), `${domain}: direct dial must remain on the loopback fixture`);
       }
     }
-    await request("forced-cloud.fixture.invalid", targetPort, "ORDINARY", "Domain", [ordinary, "手动选择", "RayLink 代理"]);
-    assert.equal((await api(`/proxies/${encodeURIComponent("AI 网站代理")}`)).now, aiChosen);
-    assert.equal((await api(`/proxies/${encodeURIComponent("未分类流量")}`)).now, "RayLink 代理");
+    await request("forced-cloud.fixture.invalid", targetPort, "ORDINARY", "Domain", [ordinary, "手动选择", "普通代理"]);
+    assert.equal((await api(`/proxies/${encodeURIComponent("AI 代理")}`)).now, aiChosen);
+    assert.equal((await api(`/proxies/${encodeURIComponent("未分类流量")}`)).now, "普通代理");
 
     for (const domain of ["localhost", "printer.lan", "router.local", "router.home.arpa"]) {
       assert.equal(await dnsAddress(domain, dnsPort), "127.0.0.1", `${format}: ${domain} must avoid fake-IP`);
@@ -370,12 +370,12 @@ try {
     for (const direct of [false, true]) {
       if (direct) await select("未分类流量", "DIRECT");
       await request("unclassified.fixture.invalid", targetPort, direct ? "DIRECT" : "ORDINARY", "Match",
-        direct ? ["DIRECT", "未分类流量"] : [ordinary, "手动选择", "RayLink 代理", "未分类流量"]);
+        direct ? ["DIRECT", "未分类流量"] : [ordinary, "手动选择", "普通代理", "未分类流量"]);
       await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
       await request("blog.csdn.net", targetPort, "DIRECT", "RuleSet", ["DIRECT"]);
-      await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "RayLink 代理"]);
-      await request("chatgpt.com", targetPort, "AI_CHOSEN", "DomainSuffix", [aiChosen, "AI 网站代理"]);
-      await request("aistudio.google.com", targetPort, "AI_CHOSEN", "Domain", [aiChosen, "AI 网站代理"]);
+      await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "普通代理"]);
+      await request("chatgpt.com", targetPort, "AI_CHOSEN", "DomainSuffix", [aiChosen, "AI 代理"]);
+      await request("aistudio.google.com", targetPort, "AI_CHOSEN", "Domain", [aiChosen, "AI 代理"]);
     }
 
     const beforeFailure = new Map([...fixtures].map(([name, fixture]) => [name, fixture.requests.filter((request) => request.startsWith("chatgpt.com:")).length]));
@@ -384,11 +384,11 @@ try {
     await assert.rejects(() => run("curl", ["--silent", "--show-error", "--fail", "--noproxy", "", "--max-time", "3",
       "--socks5-hostname", `127.0.0.1:${mixedPort}`, `http://chatgpt.com:${targetPort}/unavailable`], { timeout: 5000 }),
     "A manually fixed AI node failure must fail the request, never silently fall back");
-    assert.equal((await api(`/proxies/${encodeURIComponent("AI 网站代理")}`)).now, aiChosen);
+    assert.equal((await api(`/proxies/${encodeURIComponent("AI 代理")}`)).now, aiChosen);
     for (const [name, fixture] of fixtures) {
       assert.equal(fixture.requests.filter((request) => request.startsWith("chatgpt.com:")).length, beforeFailure.get(name), `${name}: AI outage leaked to another exit`);
     }
-    await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "RayLink 代理"]);
+    await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "普通代理"]);
     await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),

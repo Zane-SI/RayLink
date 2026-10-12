@@ -34,7 +34,7 @@ test("both full Mihomo exports preserve the same domestic fallback in DNS and ro
     const dns = body.split("  nameserver-policy:\n")[1].split("  proxy-server-nameserver:")[0];
     assert.match(dns, /"\+\.cn":\n\s+- "https:\/\/223\.5\.5\.5\/dns-query"/, format);
     const routes = body.split("\nrules:\n")[1];
-    assert.ok(routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT") > routes.indexOf("DOMAIN-SUFFIX,google.com,RayLink 代理"), format);
+    assert.ok(routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT") > routes.indexOf("DOMAIN-SUFFIX,google.com,普通代理"), format);
     assert.ok(routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT") < routes.indexOf("RULE-SET,raylink-cn-domain,DIRECT"), format);
     assert.ok(routes.endsWith('"MATCH,未分类流量"\n'), "unclassified traffic uses its selector after domestic classification");
   }
@@ -49,7 +49,7 @@ test("the full Egern profile pairs domestic fallback DNS with direct routing aft
   assert.ok(dns.includes(dnsRule));
   assert.ok(routes.includes(routeRule));
   assert.ok(dns.indexOf(dnsRule) > dns.indexOf('match: "google.com"\n        value: "overseas"'));
-  assert.ok(routes.indexOf(routeRule) > routes.indexOf('match: "google.com"\n      policy: "RayLink 代理"'));
+  assert.ok(routes.indexOf(routeRule) > routes.indexOf('match: "google.com"\n      policy: "普通代理"'));
   assert.ok(routes.indexOf(routeRule) < routes.indexOf('domain_regex:'));
 });
 
@@ -68,17 +68,17 @@ test("Chinese fallback keeps custom AI, proxy and DNS overrides ahead of domesti
     const body = exportProfile(format, policy);
     const dns = body.split("  nameserver-policy:\n")[1].split("  proxy-server-nameserver:")[0];
     const routes = body.split("\nrules:\n")[1];
-    assert.match(dns, /"assistant\.example\.cn":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 网站代理"/);
-    assert.match(dns, /"\+\.qianshouapp\.cn":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#RayLink 代理"/);
+    assert.match(dns, /"assistant\.example\.cn":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#AI 代理"/);
+    assert.match(dns, /"\+\.qianshouapp\.cn":\n\s+- "https:\/\/1\.1\.1\.1\/dns-query#普通代理"/);
     assert.match(dns, /"office\.example\.cn":\n\s+- "system"/);
-    assert.ok(routes.indexOf("DOMAIN,assistant.example.cn,AI 网站代理") < routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT"));
-    assert.ok(routes.indexOf("DOMAIN-SUFFIX,qianshouapp.cn,RayLink 代理") < routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT"));
+    assert.ok(routes.indexOf("DOMAIN,assistant.example.cn,AI 代理") < routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT"));
+    assert.ok(routes.indexOf("DOMAIN-SUFFIX,qianshouapp.cn,普通代理") < routes.indexOf("DOMAIN-SUFFIX,cn,DIRECT"));
   }
   const egern = exportProfile("egern-profile", policy);
   const dns = egern.split("  forward:\n")[1].split("  proxy_nameservers:")[0];
   const routes = egern.split("\nrules:\n")[1];
   assert.ok(dns.indexOf('match: "assistant.example.cn"\n        value: "ai"') < dns.indexOf('match: "cn"\n        value: "domestic"'));
-  assert.ok(routes.indexOf('match: "qianshouapp.cn"\n      policy: "RayLink 代理"') < routes.indexOf('match: "cn"\n      policy: "DIRECT"'));
+  assert.ok(routes.indexOf('match: "qianshouapp.cn"\n      policy: "普通代理"') < routes.indexOf('match: "cn"\n      policy: "DIRECT"'));
 });
 
 test("fallback only applies in smart mode and does not force re-resolution after custom IP precedence", () => {

@@ -60,7 +60,7 @@ test("every full client export keeps pinned AI choices inside the Host and block
     for (const available of [hosts, hosts.slice(1)]) {
       const singBoxConfig = buildMultiHostProtocolClientConfig({ credential, hosts: available, routePolicy: pinnedPolicy });
       const { body } = buildSubscriptionArtifact({ format, singBoxConfig, routePolicy: pinnedPolicy });
-      const ai = section(body, "AI 网站代理");
+      const ai = section(body, "AI 代理");
       const stable = section(body, "AI 稳定出口");
       assert.ok(ai && stable, format);
       for (const group of [ai, stable, section(body, "AI 节点选择")].filter(Boolean)) {

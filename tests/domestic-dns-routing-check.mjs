@@ -250,8 +250,8 @@ try {
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
       .replaceAll("https://223.6.6.6/dns-query", secondary.endpoint)
-      .replaceAll("https://1.1.1.1/dns-query#AI 网站代理", ai.endpoint)
-      .replaceAll("https://1.1.1.1/dns-query#RayLink 代理", remote.endpoint)
+      .replaceAll("https://1.1.1.1/dns-query#AI 代理", ai.endpoint)
+      .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
       .replaceAll('"system"', JSON.stringify(domestic.endpoint));
     const transports = proxies.map(({ name, port }) => ({ name, type: "http", server: "127.0.0.1", port }));
@@ -276,13 +276,13 @@ try {
       if (core.exitCode !== null || core.signalCode !== null) throw new Error(log);
       try {
         const [config, groups, providers] = await Promise.all([api("/configs"), api("/proxies"), api("/providers/rules")]);
-        return config["mixed-port"] === mixedPort && groups.proxies?.["AI 网站代理"]?.all?.includes(aiProxy.name)
+        return config["mixed-port"] === mixedPort && groups.proxies?.["AI 代理"]?.all?.includes(aiProxy.name)
           && providers.providers?.["raylink-cn-ip"]?.ruleCount > 0;
       } catch { return false; }
     }, `${format}: generated native profile did not become ready`, 10000);
     await select("手动选择", primary.name);
-    await select("RayLink 代理", "手动选择");
-    await select("AI 网站代理", aiProxy.name);
+    await select("普通代理", "手动选择");
+    await select("AI 代理", aiProxy.name);
     console.log(JSON.stringify({ format, version, profileBytes: Buffer.byteLength(exported), validationMs }));
 
     const cases = [
