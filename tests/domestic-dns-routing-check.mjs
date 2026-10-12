@@ -280,8 +280,7 @@ try {
           && providers.providers?.["raylink-cn-ip"]?.ruleCount > 0;
       } catch { return false; }
     }, `${format}: generated native profile did not become ready`, 10000);
-    await select("手动选择", primary.name);
-    await select("普通代理", "手动选择");
+    await select("普通代理", primary.name);
     await select("AI 代理", aiProxy.name);
     console.log(JSON.stringify({ format, version, profileBytes: Buffer.byteLength(exported), validationMs }));
 

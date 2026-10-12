@@ -335,8 +335,7 @@ try {
     assert.equal(unknown.type, "Selector");
     assert.deepEqual(unknown.all, ["普通代理", "DIRECT"]);
     assert.equal(unknown.now, "普通代理");
-    await select("手动选择", ordinary);
-    await select("普通代理", "手动选择");
+    await select("普通代理", ordinary);
     await select("AI 代理", aiChosen);
 
     // A geographical answer must not steal explicit AI, overseas or custom
@@ -352,14 +351,14 @@ try {
       const fakeIp = await dnsAddress(domain, dnsPort);
       assert.match(fakeIp, /^198\.18\./, `${domain}: must use native fake-IP recovery`);
       const connection = await request(domain, targetPort, domesticIp ? "DIRECT" : "ORDINARY", domesticIp ? "RuleSet" : "Match",
-        domesticIp ? ["DIRECT"] : [ordinary, "手动选择", "普通代理", "未分类流量"], fakeIp);
+        domesticIp ? ["DIRECT"] : [ordinary, "普通代理", "未分类流量"], fakeIp);
       assert.ok(remote.queries.some((query) => query.domain === domain && query.address === address), `${domain}: route lookup must receive ${address}`);
       if (domesticIp) {
         assert.equal(connection.rulePayload, "raylink-cn-ip", `${domain}: must match the bundled geographic IP provider`);
         assert.ok(directDial.queries.some((query) => query.domain === domain), `${domain}: direct dial must remain on the loopback fixture`);
       }
     }
-    await request("forced-cloud.fixture.invalid", targetPort, "ORDINARY", "Domain", [ordinary, "手动选择", "普通代理"]);
+    await request("forced-cloud.fixture.invalid", targetPort, "ORDINARY", "Domain", [ordinary, "普通代理"]);
     assert.equal((await api(`/proxies/${encodeURIComponent("AI 代理")}`)).now, aiChosen);
     assert.equal((await api(`/proxies/${encodeURIComponent("未分类流量")}`)).now, "普通代理");
 
@@ -370,10 +369,10 @@ try {
     for (const direct of [false, true]) {
       if (direct) await select("未分类流量", "DIRECT");
       await request("unclassified.fixture.invalid", targetPort, direct ? "DIRECT" : "ORDINARY", "Match",
-        direct ? ["DIRECT", "未分类流量"] : [ordinary, "手动选择", "普通代理", "未分类流量"]);
+        direct ? ["DIRECT", "未分类流量"] : [ordinary, "普通代理", "未分类流量"]);
       await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
       await request("blog.csdn.net", targetPort, "DIRECT", "RuleSet", ["DIRECT"]);
-      await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "普通代理"]);
+      await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "普通代理"]);
       await request("chatgpt.com", targetPort, "AI_CHOSEN", "DomainSuffix", [aiChosen, "AI 代理"]);
       await request("aistudio.google.com", targetPort, "AI_CHOSEN", "Domain", [aiChosen, "AI 代理"]);
     }
@@ -388,7 +387,7 @@ try {
     for (const [name, fixture] of fixtures) {
       assert.equal(fixture.requests.filter((request) => request.startsWith("chatgpt.com:")).length, beforeFailure.get(name), `${name}: AI outage leaked to another exit`);
     }
-    await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "手动选择", "普通代理"]);
+    await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "普通代理"]);
     await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),
