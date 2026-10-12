@@ -1130,8 +1130,15 @@ export function buildSubscriptionArtifact({
   format,
   singBoxConfig,
   routePolicy,
-  endpointOverrides = {}
+  endpointOverrides: inputEndpointOverrides = {},
+  dynamicEndpointHostnames = []
 }) {
+  // CDN endpoints must resolve at the client, never to an origin fallback or
+  // a cached edge IP. Apply this once for every supported subscription format.
+  const canonicalHostname = value => String(value).trim().toLowerCase().replace(/\.$/, "");
+  const dynamicHosts = new Set(dynamicEndpointHostnames.map(canonicalHostname));
+  const endpointOverrides = Object.fromEntries(Object.entries(inputEndpointOverrides || {})
+    .filter(([hostname]) => !dynamicHosts.has(canonicalHostname(hostname))));
   if (format === "singbox") {
     return {
       contentType: "application/json; charset=utf-8",

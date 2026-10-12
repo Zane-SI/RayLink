@@ -2224,6 +2224,59 @@ test("admin resets an existing user password without changing the entitlement or
   );
 });
 
+test("public CDN subscriptions reuse each User credential and remain removable without changing existing nodes", async (t) => {
+  const testApp = await startTestApp({ proxyHost: "node.example.com", localHostDialAddress: "203.0.113.10",
+    cdnIngress: { domain: "cdn.example.com", path: "/0123456789abcdef0123456789abcdef" }
+  });
+  t.after(() => testApp.close());
+  const cookie = await login(testApp.baseUrl);
+  const enabled = await api(testApp.baseUrl, cookie, "/api/hosts/local/protocols/vless", {
+    method: "PATCH", body: JSON.stringify({ enabled: true, port: 8444,
+      tls: { mode: "certificate", serverName: "node.example.com", certificatePath: "/test/server.crt", keyPath: "/test/server.key" }
+    })
+  });
+  assert.equal(enabled.status, 200, await enabled.text());
+  const publish = await api(testApp.baseUrl, cookie, "/api/deployments", { method: "POST" });
+  assert.equal(publish.status, 201, await publish.text());
+  const uuids = new Set();
+  let lastPath;
+  for (const name of ["cdn-first", "cdn-second"]) {
+    const created = await api(testApp.baseUrl, cookie, "/api/users", { method: "POST", body: JSON.stringify({
+      name, email: `${name}@example.test`, password: "CDN-user-test-password-2026!", quotaGb: 100,
+      nodeScope: ["all"], state: "active", portalStatus: "active", expiresAt: "2030-12-31"
+    }) });
+    assert.equal(created.status, 201);
+    const user = await created.json();
+    const rotated = await api(testApp.baseUrl, cookie, `/api/users/${user.id}/subscription/rotate`, { method: "POST" });
+    assert.equal(rotated.status, 201);
+    lastPath = new URL((await rotated.json()).subscriptionUrl).pathname;
+    const nativeResponse = await fetch(`${testApp.baseUrl}${lastPath}?format=singbox`);
+    assert.equal(nativeResponse.status, 200);
+    const config = await nativeResponse.json();
+    const cdn = config.outbounds.find(o => o.tag === "raylink-local-vless-cdn");
+    assert.ok(cdn, "the actual public subscription must contain the CDN entry");
+    assert.equal(cdn.uuid, config.outbounds.find(o => o.tag === "raylink-local-vless").uuid);
+    uuids.add(cdn.uuid);
+    const response = await fetch(`${testApp.baseUrl}${lastPath}?format=mihomo`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-disposition"), /raylink-mihomo.yaml/);
+    const body = await response.text();
+    assert.ok(body.includes('server: "cdn.example.com"'));
+    assert.ok(body.includes('"node.example.com": "203.0.113.10"'));
+    assert.ok(!body.includes('"cdn.example.com": "203.0.113.10"'));
+  }
+  assert.equal(uuids.size, 2, "Users must not share a CDN credential");
+  const disabled = await api(testApp.baseUrl, cookie, "/api/hosts/local/protocols/vless", {
+    method: "PATCH", body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(disabled.status, 200);
+  const publishDisabled = await api(testApp.baseUrl, cookie, "/api/deployments", { method: "POST" });
+  assert.equal(publishDisabled.status, 201);
+  const after = await fetch(`${testApp.baseUrl}${lastPath}?format=singbox`);
+  assert.equal(after.status, 200);
+  assert.ok(!(await after.json()).outbounds.some(o => o.tag === "raylink-local-vless-cdn"));
+});
+
 test("FlClash subscription keeps the Host domain while pinning its resolved dial address", async (t) => {
   let resolvedAddress = "203.0.113.20";
   const testApp = await startTestApp({

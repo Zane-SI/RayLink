@@ -7,13 +7,15 @@ export function buildUserClientConfig({
   hosts,
   ruleSetBaseUrl = null,
   probeUrl,
-  routePolicy
+  routePolicy,
+  cdnIngress
 }) {
   return buildMultiHostProtocolClientConfig({
     credential,
     hosts: hosts || [],
     ruleSetBaseUrl,
     probeUrl,
-    routePolicy
+    routePolicy,
+    cdnIngress
   });
 }

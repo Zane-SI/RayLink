@@ -415,6 +415,7 @@ export function buildMultiHostProtocolClientConfig({
   ruleSetBaseUrl = null,
   probeUrl = DEFAULT_ROUTE_PROBE_URL,
   routePolicy,
+  cdnIngress,
   now = Date.now()
 }) {
   const smartExcludedTags = new Set();
@@ -432,7 +433,7 @@ export function buildMultiHostProtocolClientConfig({
     const activations = new Map(
       (host.protocolActivations || []).map((activation) => [activation.type, activation])
     );
-    return managed.map((profile) => {
+    const outbounds = managed.map((profile) => {
       const tag = `raylink-${hostTag}-${profile.type}`;
       outboundHostIds.set(tag, host.id);
       if (
@@ -443,6 +444,23 @@ export function buildMultiHostProtocolClientConfig({
       }
       return buildClientOutbound(profile, credential, host.endpointDomain || host.address, tag);
     });
+    // The optional loopback adapter authenticates again against this Host's
+    // existing VLESS inbound. It inherits that Host's entitlement and AI pin.
+    const source = managed.find(profile => profile.type === "vless");
+    if (cdnIngress && host.id === "local" && source
+      && source.tls.mode === "certificate" && source.tls.serverName
+      && source.transport.type === "none"
+      && ["::", "0.0.0.0", "127.0.0.1"].includes(source.listen)) {
+      const tag = `raylink-${hostTag}-vless-cdn`;
+      outboundHostIds.set(tag, host.id);
+      outbounds.push({
+        type: "vless", tag, server: cdnIngress.domain, server_port: 443,
+        uuid: credential.runtimeUuid,
+        tls: { enabled: true, server_name: cdnIngress.domain },
+        transport: { type: "ws", path: cdnIngress.path, headers: { Host: cdnIngress.domain } }
+      });
+    }
+    return outbounds;
   });
   return clientConfigForOutbounds(protocolOutbounds, {
     ruleSetBaseUrl,
