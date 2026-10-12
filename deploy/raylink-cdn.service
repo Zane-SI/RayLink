@@ -1,0 +1,21 @@
+[Unit]
+Description=RayLink optional CDN WebSocket ingress
+After=network.target sing-box-raylink.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredential=config.json:/var/lib/raylink-cdn/config.json
+ExecStart=/usr/local/bin/raylink-sing-box run -c %d/config.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

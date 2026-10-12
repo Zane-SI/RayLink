@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronize CDN ingress users from the RayLink VLESS runtime
+After=sing-box-raylink.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/raylink-nodejs/bin/node /usr/local/lib/raylink-cdn/cdn-ingress.mjs sync /var/lib/raylink/sing-box/config.json /var/lib/raylink-cdn/settings.json /var/lib/raylink-cdn/config.json
+TimeoutStartSec=60
+UMask=0077

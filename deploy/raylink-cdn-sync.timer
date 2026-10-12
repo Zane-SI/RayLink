@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile CDN ingress after boot, certificate rotation or missed events
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=30s
+AccuracySec=5s
+Unit=raylink-cdn-sync.service
+
+[Install]
+WantedBy=timers.target
