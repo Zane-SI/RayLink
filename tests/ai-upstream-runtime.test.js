@@ -3,7 +3,7 @@ import test from "node:test";
 import { buildSingBoxConfig } from "../server/singbox/config.js";
 import { buildMultiHostProtocolClientConfig, defaultProtocolConfigs } from "../server/singbox/protocol-catalog.js";
 import { RuntimeManager } from "../server/singbox/runtime-manager.js";
-import { isAiUpstreamDomain } from "../server/routing/ai-upstream-domains.js";
+import { isAiUpstreamDomain, isResidentialUpstreamDomain } from "../server/routing/ai-upstream-domains.js";
 
 const upstream = { enabled: true, hostId: "local", type: "socks5", server: "upstream.example", port: 1080,
   username: "fixture-user", password: "fixture-secret", tlsServerName: "upstream.example", revision: 1 };
@@ -45,11 +45,16 @@ test("AI client routing preserves original domain instead of resolving it before
   assert.equal(aiRules.some(item => item.action === "resolve"), false);
 });
 
-test("residential matching includes AI services but excludes ordinary Google, shared login and challenges", () => {
+test("residential matching includes the exact Google regional correction but excludes other ordinary Google traffic", () => {
   for (const domain of ["claude.ai", "API.Anthropic.com.", "chatgpt.com", "api.openai.com", "gemini.google.com", "aistudio.google.com", "copilot.microsoft.com"]) assert.ok(isAiUpstreamDomain(domain), domain);
-  for (const domain of ["google.com", "www.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com",
+  for (const domain of ["www.google.com", "WWW.GOOGLE.COM."]) {
+    assert.equal(isAiUpstreamDomain(domain), false, `${domain} is a regional correction, not an AI classification`);
+    assert.equal(isResidentialUpstreamDomain(domain), true, domain);
+  }
+  for (const domain of ["google.com", "news.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com",
     "github.com", "login.microsoftonline.com", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "images.workoscdn.com", "claude.ai.evil.example", "https://claude.ai", "a..claude.ai", ".claude.ai", "127.0.0.1", ""]) {
     assert.equal(isAiUpstreamDomain(domain), false, domain);
+    assert.equal(isResidentialUpstreamDomain(domain), false, domain);
   }
 });
 

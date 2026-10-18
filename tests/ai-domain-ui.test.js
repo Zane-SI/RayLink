@@ -17,7 +17,7 @@ test("AI coverage is readable, includes exclusions and escapes domain data witho
   const container = { innerHTML: "" };
   const context = { document: { querySelector: () => container }, escapeHtml,
     routingMatchLabels: { domain: "完整域名", domain_suffix: "域名后缀" }, routingActionLabels: { ai: "AI 出口", direct: "直连", proxy: "默认代理出口" },
-    controlPlane: { aiDomainRules: { version: "fixture-v1", domainNames: ["gemini.google.com"], domainSuffixes: ["claude.ai"],
+    controlPlane: { aiDomainRules: { version: "fixture-v1", domainNames: ["gemini.google.com"], domainSuffixes: ["claude.ai"], regionalDomains: ["www.google.com"],
       sharedDomains: ["accounts.google.com"], protectedDomains: ["google.com"], customRules: [
         { id: "include", match: "domain", value: "custom.ai", action: "ai", enabled: true, priority: 10 },
         { id: "exclude", match: "domain", value: "<excluded.ai>", action: "direct", enabled: false, priority: 20 }
@@ -25,7 +25,8 @@ test("AI coverage is readable, includes exclusions and escapes domain data witho
   vm.runInNewContext(handler("renderAiDomainRules"), context);
   context.renderAiDomainRules();
   assert.match(container.innerHTML, /fixture-v1/);
-  for (const domain of ["gemini.google.com", "claude.ai", "accounts.google.com", "google.com", "custom.ai"]) assert.ok(container.innerHTML.includes(domain));
+  for (const domain of ["gemini.google.com", "claude.ai", "www.google.com", "accounts.google.com", "google.com", "custom.ai"]) assert.ok(container.innerHTML.includes(domain));
+  assert.match(container.innerHTML, /地区纠偏/);
   assert.match(container.innerHTML, /AI 出口/); assert.match(container.innerHTML, /直连/); assert.match(container.innerHTML, /已停用/);
   assert.match(container.innerHTML, /&lt;excluded.ai&gt;/);
   assert.doesNotMatch(container.innerHTML, /<(?:input|form|textarea)\b|<excluded.ai>/);

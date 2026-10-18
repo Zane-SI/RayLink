@@ -457,6 +457,7 @@ function renderAiDomainRules() {
   const rules = coverage.customRules || [];
   container.innerHTML = `<p class="field-hint">内置版本：${escapeHtml(coverage.version || "未提供")} · 自定义域名规则 ${rules.length} 条</p>
     <div class="ai-domain-grid">${domains("内置完整域名", coverage.domainNames)}${domains("内置域名后缀", coverage.domainSuffixes)}
+    ${domains("地区纠偏精确域名", coverage.regionalDomains)}
     ${domains("已知共享服务保护", coverage.sharedDomains)}${domains("已知普通大域保护", coverage.protectedDomains)}</div>
     <details${rules.length ? " open" : ""}><summary>自定义覆盖与排除 · ${rules.length}</summary>
       <ul class="ai-domain-overrides">${rules.map(rule => `<li><strong>${escapeHtml(rule.value)}</strong>
@@ -550,9 +551,9 @@ function renderRoutingDiagnostic(diagnostic) {
   const result = document.querySelector("#routing-diagnose-result");
   if (!result) return;
   const ai = diagnostic.aiDomain;
-  const sources = { custom: "自定义规则", builtin: "内置 AI 域名", shared: "已知共享 / 普通域名保护", none: "未匹配 AI 域名", ai: "内置 AI 规则", mode: "全局路由模式" };
+  const sources = { custom: "自定义规则", builtin: "内置 AI 域名", regional: "Google 地区纠偏", shared: "已知共享 / 普通域名保护", none: "未匹配 AI 域名", ai: "内置 AI 规则", mode: "全局路由模式" };
   const addresses = diagnostic.addresses || [];
-  const aiClassification = ai?.eligible ? "AI 专用域名" : ai?.source === "shared" ? "共享 / 普通保护域名" : "未识别为 AI 专用域名";
+  const aiClassification = ai?.source === "regional" ? "Google 地区纠偏域名" : ai?.eligible ? "AI 专用域名" : ai?.source === "shared" ? "共享 / 普通保护域名" : "未识别为 AI 专用域名";
   const egressLabels = { residential: "住宅代理出口", server: "默认出口", blocked: "已拦截，无出口", "client-direct": "客户端直连", "client-selection": "未分类流量组，由客户端选择" };
   const terminalAction = ["blocked", "client-direct", "client-selection"].includes(ai?.desiredEgress);
   const sync = ai?.runtimeSync;

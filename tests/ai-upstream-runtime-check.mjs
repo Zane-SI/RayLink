@@ -30,7 +30,8 @@ const aiDomains = ["claude.ai", "api.openai.com", "gemini.google.com", ...(custo
 const directory = await mkdtemp(join(tmpdir(), "raylink-ai-upstream-"));
 const allSockets = new Set(), servers = new Set(), children = new Set(), udpSockets = new Set();
 const credential = { email: "egress-fixture@example.invalid", runtimeUuid: "3365c019-4b70-4dd5-9b3a-48d83a22f24d", runtimePassword: "native-fixture-password" };
-const ordinaryDomains = ["www.google.com", "google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com", "ordinary.fixture.invalid", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "setup.workos.com", "images.workoscdn.com", "workos.imgix.net", ...(customDomains ? ["ordinary.assistant.invalid", "ordinary.claude.ai", "disabled.invalid", "www.instagram.com", "x.com"] : [])];
+const regionalDomains = ["www.google.com"];
+const ordinaryDomains = ["google.com", "news.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com", "ordinary.fixture.invalid", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "setup.workos.com", "images.workoscdn.com", "workos.imgix.net", ...(customDomains ? ["ordinary.assistant.invalid", "ordinary.claude.ai", "disabled.invalid", "www.instagram.com", "x.com"] : [])];
 async function listen(server) {
   servers.add(server);
   server.on("connection", socket => { allSockets.add(socket); socket.on("error", () => {}); socket.on("close", () => allSockets.delete(socket)); });
@@ -138,7 +139,7 @@ try {
       aiUpstream: { enabled: true, hostId: "local", type, server: "upstream.fixture.invalid", port: proxyPort, username: "fixture", password: "fixture-secret", tlsServerName: "upstream.fixture.invalid", revision: 1 } });
     const productionPath = join(directory, type + "-production.json"); await writeFile(productionPath, JSON.stringify(config), { mode: 0o600 });
     await run(binary, ["check", "-c", productionPath]);
-    const domains = [...aiDomains, "upstream.fixture.invalid", ...ordinaryDomains];
+    const domains = [...aiDomains, ...regionalDomains, "upstream.fixture.invalid", ...ordinaryDomains];
     // Only environment fixtures change: DNS answers and bind addresses. Native
     // server routing/outbounds and each public protocol's user identity stay intact.
     config.dns.servers = config.dns.servers.map(({ tag }) => ({ type: "hosts", tag, predefined: Object.fromEntries(domains.map(domain => [domain, ["127.0.0.1"]])) }));
@@ -150,11 +151,12 @@ try {
       ...(numeric ? ["--resolve", `${domain}:${state.tlsTargetPort}:127.0.0.1`] : []), `${tls ? "https" : "http"}://${domain}:${tls ? state.tlsTargetPort : targetPort}/`], { timeout: 7000 })).stdout;
     if (type === "https") {
       const directBefore = state.direct; await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBefore, "untrusted HTTPS proxy must not fall back direct");
-      assert.equal(await request("www.google.com"), "DIRECT"); await stop(runtime);
+      assert.equal(await request("google.com"), "DIRECT"); await stop(runtime);
       config.outbounds.find(item => item.tag === "ai-residential").tls.certificate_path = certificatePath;
       runtime = await launch(config, type + "-trusted");
     }
     for (const domain of aiDomains) assert.equal(await request(domain), "RESIDENTIAL", `${type}: ${domain} must reach residential upstream`);
+    for (const domain of regionalDomains) assert.equal(await request(domain), "RESIDENTIAL", `${type}: ${domain} must use the regional correction upstream`);
     assert.ok(state.destinations.some(value => value.host === "claude.ai" && value.port === targetPort), "upstream must receive original domain");
     for (const domain of ordinaryDomains) assert.equal(await request(domain), "DIRECT", `${domain} must retain ordinary egress`);
     assert.equal(await request("127.0.0.1"), "DIRECT", "IP-only ordinary traffic must not be swept into residential egress");
@@ -192,16 +194,17 @@ try {
         assert.ok(state.destinations.slice(beforeClient).some(value => value.host === "api.assistant.invalid"), "custom AI name must reach the residential proxy unchanged");
         assert.equal(await request("ordinary.assistant.invalid", clientPort), "DIRECT", "custom exception must retain ordinary egress through the real protocol");
       }
-      assert.equal(await request("www.google.com", clientPort), "DIRECT");
+      assert.equal(await request("www.google.com", clientPort), "RESIDENTIAL", `${profile.type}: Google regional correction must survive the generated client`);
       await stop(client);
     }
     const directBeforeFailure = state.direct; state.healthy = false;
     await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBeforeFailure, "upstream failure must never retry AI directly");
-    assert.equal(await request("www.google.com"), "DIRECT", "ordinary browsing survives residential failure");
+    await assert.rejects(() => request("www.google.com"));
+    assert.equal(await request("google.com"), "DIRECT", "other ordinary Google browsing survives residential failure");
     state.healthy = true; state.authAllowed = false; const directBeforeAuth = state.direct;
     await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBeforeAuth, "upstream authentication failure must not fall back direct");
     await stop(runtime);
-    console.log(JSON.stringify({ core: version, customDomains, upstream: type, aiResidential: true, originalDomainPreserved: true, googleAndOrdinaryDirect: true,
+    console.log(JSON.stringify({ core: version, customDomains, upstream: type, aiResidential: true, originalDomainPreserved: true, googleRegionalCorrectionResidential: true, otherGoogleAndOrdinaryDirect: true,
       sharedIdentityAndChallengeDirect: true, visibleAiSniRecognized: true, aiUdpRejected: true, ordinaryUdpDirect: true,
       tcpViaRealInboundProtocols: profiles.map(item => item.type), upstreamFailureClosed: true, authenticationFailureClosed: true,
       generatedClientDomainPreservation: true,

@@ -96,7 +96,8 @@ try {
   config.dns.servers = config.dns.servers.map(({ tag }) => ({ type: "udp", tag, server: "127.0.0.1", server_port: dns.address().port }));
   if (!bundledGeolocation) config.route.rule_set = [
     { type: "inline", tag: "geosite-geolocation-cn", rules: [{ domain_suffix: ["known.cn"] }] },
-    { type: "inline", tag: "geoip-cn", rules: [{ ip_cidr: ["192.0.2.0/24"] }] }
+    { type: "inline", tag: "geoip-cn", rules: [{ ip_cidr: ["192.0.2.0/24"] }] },
+    { type: "inline", tag: "adblock-johnshall", rules: [{ domain: ["adblock-fixture.invalid"] }] }
   ];
   // Redirect only the selected direct route to a local HTTP origin, after matching.
   for (const rule of config.route.rules) {

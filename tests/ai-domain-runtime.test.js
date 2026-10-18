@@ -43,7 +43,9 @@ test("broad custom AI rules cannot move shared provider sites into residential b
       ({ id: `broad-${index}`, match: "domain_suffix", value, action: "ai" })),
     { id: "shared-exact", match: "domain", value: "workos.imgix.net", action: "ai" }
   ]));
-  for (const domain of ["www.google.com", "accounts.google.com", "maps.googleapis.com", "fonts.gstatic.com", "www.youtube.com", "x.com", "instagram.com", "raw.githubusercontent.com", "login.microsoftonline.com", "www.microsoft.com", "challenges.cloudflare.com", "cdn.workos.com", "workos.imgix.net", "www.google.co.uk"]) {
+  assert.equal(destination(config, "www.google.com"), "ai-residential", "the exact regional correction stays residential");
+  assert.equal(destination(config, "www.google.com", "udp"), "reject", "the regional correction remains TCP-only");
+  for (const domain of ["accounts.google.com", "maps.googleapis.com", "fonts.gstatic.com", "www.youtube.com", "x.com", "instagram.com", "raw.githubusercontent.com", "login.microsoftonline.com", "www.microsoft.com", "challenges.cloudflare.com", "cdn.workos.com", "workos.imgix.net", "www.google.co.uk"]) {
     assert.equal(destination(config, domain), "direct", domain);
     assert.equal(destination(config, domain, "udp"), "direct", domain);
   }
@@ -61,21 +63,21 @@ test("domain explanations expose the effective custom rule and shared guard with
     { id: "ordinary", match: "domain", value: "claude.ai", action: "proxy", priority: 10 },
     { id: "ip-ai", match: "ip", value: "192.0.2.1", action: "ai", priority: 0 }
   ]).routingPolicy;
-  const custom = aiDomains.describeAiDomain("Assistant.Example.", policy);
+  const custom = aiDomains.describeResidentialUpstreamDomain("Assistant.Example.", policy);
   assert.deepEqual({ eligible: custom.eligible, source: custom.source, ruleId: custom.ruleId, match: custom.match, value: custom.value },
     { eligible: true, source: "custom", ruleId: "assistant", match: "domain", value: "assistant.example" });
-  const excluded = aiDomains.describeAiDomain("claude.ai", policy);
+  const excluded = aiDomains.describeResidentialUpstreamDomain("claude.ai", policy);
   assert.equal(excluded.eligible, false);
   assert.equal(excluded.ruleId, "ordinary");
-  const shared = aiDomains.describeAiDomain("accounts.google.com", policy);
+  const shared = aiDomains.describeResidentialUpstreamDomain("accounts.google.com", policy);
   assert.equal(shared.eligible, false);
   assert.equal(shared.source, "shared");
   assert.equal(shared.ruleId, "shared");
   assert.ok(shared.reason);
-  assert.equal(aiDomains.describeAiDomain("gemini.google.com", policy).eligible, true);
-  assert.equal(aiDomains.describeAiDomain("api.openai.com", policy).source, "builtin");
+  assert.equal(aiDomains.describeResidentialUpstreamDomain("gemini.google.com", policy).eligible, true);
+  assert.equal(aiDomains.describeResidentialUpstreamDomain("api.openai.com", policy).source, "builtin");
   for (const domain of ["192.0.2.1", "unknown.example", "https://claude.ai", "a..claude.ai"]) {
-    const explanation = aiDomains.describeAiDomain(domain, policy);
+    const explanation = aiDomains.describeResidentialUpstreamDomain(domain, policy);
     assert.equal(explanation.eligible, false, domain);
     assert.ok(explanation.reason, domain);
   }
@@ -88,7 +90,8 @@ test("the readable catalog preserves disabled and non-AI exceptions without expo
     { id: "ip", match: "ip", value: "192.0.2.1", action: "ai" }
   ]).routingPolicy, password: "unrelated-sensitive-field" };
   const view = aiDomains.aiDomainRulesView(policy);
-  assert.equal(view.version, "2026-10-04.1");
+  assert.equal(view.version, "2026-10-18.1");
+  assert.deepEqual(view.regionalDomains, ["www.google.com"]);
   assert.ok(view.domainSuffixes.includes("claude.ai"));
   assert.ok(view.domainNames.includes("aistudio.google.com"));
   assert.ok(view.sharedDomains.includes("cdn.workos.com"));
@@ -106,7 +109,7 @@ test("first matching domain rules retain priority for additions, exclusions, blo
     { id: "disabled", match: "domain", value: "chatgpt.com", action: "proxy", enabled: false, priority: 0 },
     { id: "new-ai", match: "domain_suffix", value: "assistant.example", action: "ai", priority: 20 }
   ]));
-  assert.equal(destination(config, "www.google.com"), "direct", "a guarded earlier AI rule retains the ordinary path before later rules");
+  assert.equal(destination(config, "www.google.com"), "ai-residential", "the exact regional correction is not suppressed by a broad AI rule");
   assert.equal(destination(config, "aistudio.google.com"), "direct", "earlier exact exclusion wins over a later broad AI rule");
   assert.equal(destination(config, "blocked.assistant.example"), "reject");
   assert.equal(destination(config, "api.assistant.example"), "ai-residential");

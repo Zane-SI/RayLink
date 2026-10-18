@@ -22,7 +22,7 @@ import { createMcpService } from "./mcp.js";
 import { NodeProvisioning } from "./node-provisioning.js";
 import { NodeDomains } from "./node-domains.js";
 import { diagnoseRoutingDomain } from "./routing/diagnostics.js";
-import { AI_DOMAIN_RULES_VERSION, describeAiDomain, aiDomainRulesView } from "./routing/ai-upstream-domains.js";
+import { AI_DOMAIN_RULES_VERSION, describeResidentialUpstreamDomain, aiDomainRulesView } from "./routing/ai-upstream-domains.js";
 import { AiServiceDiagnostics, AI_DIAGNOSTIC_SERVICES, defaultAiDiagnosticProbe } from "./routing/ai-diagnostics.js";
 import { createAiUpstreamProbe } from "./routing/ai-upstream-probe.js";
 import { getBundledAdblockArtifact } from "./routing/adblock/bundled.js";
@@ -1639,7 +1639,7 @@ export async function createRayLinkApp(options) {
       const policy = store.routingPolicy();
       const upstream = store.aiUpstreamSettings();
       const { runtimeSync } = await aiEgressView(runtime);
-      const aiDomain = describeAiDomain(body.domain, policy);
+      const aiDomain = describeResidentialUpstreamDomain(body.domain, policy);
       const diagnostic = await diagnoseRoutingDomain({
           domain: body.domain,
           policy,
