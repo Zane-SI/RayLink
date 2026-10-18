@@ -2028,7 +2028,11 @@ test("subscription uses control-plane managed official rule sets when cached", a
   assert.ok(config.route.rule_set.every((ruleSet) => ruleSet.type === "remote"));
   assert.deepEqual(
     config.route.rule_set.map((ruleSet) => new URL(ruleSet.url).pathname),
-    ["/rule-sets/geosite-geolocation-cn.srs", "/rule-sets/geoip-cn.srs"]
+    [
+      "/rule-sets/geosite-geolocation-cn.srs",
+      "/rule-sets/geoip-cn.srs",
+      "/rule-sets/adblock-johnshall.srs"
+    ]
   );
   assert.ok(
     config.route.rule_set.every(
@@ -2041,6 +2045,22 @@ test("subscription uses control-plane managed official rule sets when cached", a
   assert.equal(ruleSetResponse.headers.get("content-type"), "application/octet-stream");
   assert.equal(await ruleSetResponse.text(), "managed-geosite");
   assert.equal(ruleSetResponse.headers.get("link"), '</rule-sets/attribution.txt>; rel="describedby"');
+
+  for (const [filename, contentType] of [
+    ["adblock-johnshall.srs", "application/octet-stream"],
+    ["adblock-johnshall.mrs", "application/octet-stream"],
+    ["adblock-johnshall-egern.yaml", "application/yaml; charset=utf-8"]
+  ]) {
+    const response = await fetch(`${testApp.baseUrl}/rule-sets/${filename}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), contentType);
+    assert.equal(response.headers.get("link"), '</rule-sets/attribution.txt>; rel="describedby"');
+    assert.match(response.headers.get("etag"), /^"[a-f0-9]{64}"$/);
+    assert.ok((await response.arrayBuffer()).byteLength > 100_000);
+    const head = await fetch(`${testApp.baseUrl}/rule-sets/${filename}`, { method: "HEAD" });
+    assert.equal(head.status, 200);
+    assert.equal(await head.text(), "");
+  }
 });
 
 test("public routing data attribution is available on the subscription-only host and linked from cached SRS", async (t) => {
@@ -2063,6 +2083,8 @@ test("public routing data attribution is available on the subscription-only host
   assert.match(body, /https:\/\/db-ip\.com/);
   assert.match(body, /https:\/\/creativecommons\.org\/licenses\/by\/4\.0/);
   assert.match(body, /SagerNet/);
+  assert.match(body, /Johnshall\/Shadowrocket-ADBlock-Rules-Forever/);
+  assert.match(body, /creativecommons\.org\/licenses\/by-sa\/4\.0/);
 });
 
 test("offline cold start serves the complete bundled routing baseline and reports its version", async (t) => {

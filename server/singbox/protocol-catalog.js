@@ -10,6 +10,7 @@ import {
   PROXY_DOMAIN_SUFFIXES,
   ROUTE_POLICY_GROUPS
 } from "../routing/policy.js";
+import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 
 const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
@@ -545,6 +546,14 @@ function clientConfigForOutbounds(
           url: new URL("geoip-cn.srs", ruleSetBaseUrl).toString(),
           download_detour: "direct",
           update_interval: "1d"
+        },
+        {
+          type: "remote",
+          tag: "adblock-johnshall",
+          format: "binary",
+          url: new URL("adblock-johnshall.srs", ruleSetBaseUrl).toString(),
+          download_detour: "direct",
+          update_interval: "1d"
         }
       ]
     : [
@@ -557,6 +566,11 @@ function clientConfigForOutbounds(
           type: "inline",
           tag: "geoip-cn",
           rules: getBundledRoutingRules().geoip
+        },
+        {
+          type: "inline",
+          tag: "adblock-johnshall",
+          rules: [{ domain_suffix: getBundledAdblockDomains() }]
         }
       ];
   const customDnsRules = routePolicy.rules.flatMap((rule) => {
@@ -607,15 +621,25 @@ function clientConfigForOutbounds(
   // Keep the exact addresses already checked by earlier IP rules. Re-resolving
   // a TTL=0/rotating answer here could dial an IP that those rules would reject.
   const resolveRemaining = (match = {}) => resolvesCustomIps ? [] : [{ ...match, action: "resolve" }];
+  const managedAiRouteRules = [{
+    // Keep AI domains ahead of the upstream ad-block list in every mode. The
+    // reviewed list contains r.openai.com, so relying on the final route would
+    // reject a legitimate AI dependency in direct/global modes.
+    domain: [...AI_DOMAIN_NAMES],
+    domain_suffix: [...AI_DOMAIN_SUFFIXES],
+    ...(routePolicy.mode === "smart" && aiUnavailable
+      ? { action: "reject" }
+      : {
+          action: "route",
+          outbound: routePolicy.mode === "direct"
+            ? ROUTE_POLICY_GROUPS.direct.tag
+            : routePolicy.mode === "global-proxy"
+              ? ROUTE_POLICY_GROUPS.proxy.tag
+              : ROUTE_POLICY_GROUPS.ai.tag
+        })
+  }];
   const managedRouteRules = routePolicy.mode === "smart"
     ? [
-        // Keep AI domain destinations in the proxy request. The server can
-        // then consistently classify them and resolve via its chosen egress.
-        {
-          domain: [...AI_DOMAIN_NAMES],
-          domain_suffix: [...AI_DOMAIN_SUFFIXES],
-          ...(aiUnavailable ? { action: "reject" } : { action: "route", outbound: ROUTE_POLICY_GROUPS.ai.tag })
-        },
         ...resolveRemaining({ domain_suffix: [...PROXY_DOMAIN_SUFFIXES] }),
         {
           domain_suffix: [...PROXY_DOMAIN_SUFFIXES],
@@ -789,6 +813,8 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
+        ...managedAiRouteRules,
+        { rule_set: "adblock-johnshall", action: "reject" },
         ...managedRouteRules
       ],
       rule_set: ruleSets,

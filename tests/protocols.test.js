@@ -244,7 +244,7 @@ test("client configuration includes every enabled user-facing protocol", () => {
   );
   assert.deepEqual(
     config.route.rule_set.map((ruleSet) => ruleSet.tag),
-    ["geosite-geolocation-cn", "geoip-cn"]
+    ["geosite-geolocation-cn", "geoip-cn", "adblock-johnshall"]
   );
   assert.ok(config.route.rule_set.every((ruleSet) => ruleSet.type === "inline"));
   assert.ok(config.route.rule_set.every((ruleSet) => !Object.hasOwn(ruleSet, "url")));
@@ -290,8 +290,13 @@ test("sing-box client configuration compiles custom routing and DNS before manag
     (rule) => rule.domain_suffix?.includes("work.example") && rule.action === "route"
   );
   const aiIndex = config.route.rules.findIndex((rule) => rule.outbound === "raylink-ai");
+  const adblockIndex = config.route.rules.findIndex(
+    (rule) => rule.rule_set === "adblock-johnshall" && rule.action === "reject"
+  );
   assert.ok(customDirectIndex > 1);
   assert.ok(customDirectIndex < aiIndex);
+  assert.ok(aiIndex < adblockIndex);
+  assert.ok(adblockIndex < config.route.rules.findIndex((rule) => rule.outbound === "raylink-auto"));
   assert.equal(config.route.rules[customDirectIndex].outbound, "direct");
   assert.ok(config.route.rules.some(
     (rule) => rule.ip_cidr?.includes("192.0.2.0/24") && rule.action === "reject"

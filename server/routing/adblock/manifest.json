@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "version": "johnshall-aa5fd1b1ef00",
+  "publishedAt": "2026-10-17T23:03:41Z",
+  "description": "Reviewed domain-only adaptation of Shadowrocket-ADBlock-Rules-Forever sr_ad_only.conf; upstream IP ranges are intentionally excluded to reduce shared-address false positives.",
+  "source": {
+    "repository": "https://github.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever",
+    "commit": "aa5fd1b1ef00e4582ef255949469f12f746f3183",
+    "url": "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/aa5fd1b1ef00e4582ef255949469f12f746f3183/sr_ad_only.conf",
+    "sha256": "1eda2b7be2a11b1fffd31641a7d3abb353ac1c05289b2e935165339837f3a95c",
+    "bytes": 2325188,
+    "license": "CC-BY-SA-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/"
+  },
+  "statistics": {
+    "domainSuffixes": 58417,
+    "excludedIpCidrRules": 128,
+    "excludedNormalizedIpCidrs": 125
+  },
+  "artifacts": [
+    {
+      "filename": "adblock-johnshall.json",
+      "bytes": 1209389,
+      "sha256": "3f613aba737531d0a4575c5c86f8565840b6829852abeba02da24019f854d421"
+    },
+    {
+      "filename": "adblock-johnshall.srs",
+      "bytes": 483377,
+      "sha256": "07ad39803177e187f6b17d492e7a0daef08b95bf874c4111fbd3f93b6b47be4c"
+    },
+    {
+      "filename": "adblock-johnshall.mrs",
+      "bytes": 489675,
+      "sha256": "6729b1a647aca20586b842bf0d840088f7b3adcdb5887615566ff5e84f19a6b8"
+    },
+    {
+      "filename": "adblock-johnshall-egern.yaml",
+      "bytes": 1326208,
+      "sha256": "42707de102137db73ea22a319fd6c0f7e9164cdda3616648b5090eeda860dc1e"
+    }
+  ]
+}

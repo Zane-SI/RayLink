@@ -25,6 +25,7 @@ import { diagnoseRoutingDomain } from "./routing/diagnostics.js";
 import { AI_DOMAIN_RULES_VERSION, describeAiDomain, aiDomainRulesView } from "./routing/ai-upstream-domains.js";
 import { AiServiceDiagnostics, AI_DIAGNOSTIC_SERVICES, defaultAiDiagnosticProbe } from "./routing/ai-diagnostics.js";
 import { createAiUpstreamProbe } from "./routing/ai-upstream-probe.js";
+import { getBundledAdblockArtifact } from "./routing/adblock/bundled.js";
 import { getBundledRoutingVersion } from "./routing/rule-sets/bundled.js";
 import { validateNodeEncryptionPublicKey } from "./node-secrets.js";
 import {
@@ -2247,10 +2248,13 @@ export async function createRayLinkApp(options) {
       }
 
       const ruleSetMatch = url.pathname.match(
-        /^\/rule-sets\/(geosite-geolocation-cn\.srs|geoip-cn\.srs)$/
+        /^\/rule-sets\/(geosite-geolocation-cn\.srs|geoip-cn\.srs|adblock-johnshall\.(?:srs|mrs)|adblock-johnshall-egern\.yaml)$/
       );
-      if (request.method === "GET" && ruleSetMatch) {
-        const payload = await ruleSetCache.get(ruleSetMatch[1]);
+      if (["GET", "HEAD"].includes(request.method) && ruleSetMatch) {
+        const filename = ruleSetMatch[1];
+        const payload = filename.startsWith("adblock-johnshall")
+          ? getBundledAdblockArtifact(filename)
+          : await ruleSetCache.get(filename);
         if (!payload) {
           sendJson(response, 404, {
             error: { code: "RULE_SET_NOT_READY", message: "完整规则集尚未准备完成" }
@@ -2260,7 +2264,9 @@ export async function createRayLinkApp(options) {
         const etag = `"${createHash("sha256").update(payload).digest("hex")}"`;
         const headers = {
           "cache-control": "public, max-age=3600, must-revalidate",
-          "content-type": "application/octet-stream",
+          "content-type": filename.endsWith(".yaml")
+            ? "application/yaml; charset=utf-8"
+            : "application/octet-stream",
           "content-length": payload.length,
           link: '</rule-sets/attribution.txt>; rel="describedby"',
           etag,
@@ -2272,7 +2278,7 @@ export async function createRayLinkApp(options) {
           return;
         }
         response.writeHead(200, headers);
-        response.end(payload);
+        endRequestPayload(request, response, payload);
         return;
       }
 
