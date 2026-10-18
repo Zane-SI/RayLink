@@ -43,8 +43,8 @@ test("broad custom AI rules cannot move shared provider sites into residential b
       ({ id: `broad-${index}`, match: "domain_suffix", value, action: "ai" })),
     { id: "shared-exact", match: "domain", value: "workos.imgix.net", action: "ai" }
   ]));
-  assert.equal(destination(config, "www.google.com"), "ai-residential", "the exact regional correction stays residential");
-  assert.equal(destination(config, "www.google.com", "udp"), "reject", "the regional correction remains TCP-only");
+  assert.equal(destination(config, "www.google.com"), "direct", "ordinary Google must not use the AI residential upstream");
+  assert.equal(destination(config, "www.google.com", "udp"), "direct", "ordinary Google UDP must retain the server egress");
   for (const domain of ["accounts.google.com", "maps.googleapis.com", "fonts.gstatic.com", "www.youtube.com", "x.com", "instagram.com", "raw.githubusercontent.com", "login.microsoftonline.com", "www.microsoft.com", "challenges.cloudflare.com", "cdn.workos.com", "workos.imgix.net", "www.google.co.uk"]) {
     assert.equal(destination(config, domain), "direct", domain);
     assert.equal(destination(config, domain, "udp"), "direct", domain);
@@ -90,8 +90,8 @@ test("the readable catalog preserves disabled and non-AI exceptions without expo
     { id: "ip", match: "ip", value: "192.0.2.1", action: "ai" }
   ]).routingPolicy, password: "unrelated-sensitive-field" };
   const view = aiDomains.aiDomainRulesView(policy);
-  assert.equal(view.version, "2026-10-18.1");
-  assert.deepEqual(view.regionalDomains, ["www.google.com"]);
+  assert.equal(view.version, "2026-10-18.2");
+  assert.deepEqual(view.regionalDomains, []);
   assert.ok(view.domainSuffixes.includes("claude.ai"));
   assert.ok(view.domainNames.includes("aistudio.google.com"));
   assert.ok(view.sharedDomains.includes("cdn.workos.com"));
@@ -109,7 +109,7 @@ test("first matching domain rules retain priority for additions, exclusions, blo
     { id: "disabled", match: "domain", value: "chatgpt.com", action: "proxy", enabled: false, priority: 0 },
     { id: "new-ai", match: "domain_suffix", value: "assistant.example", action: "ai", priority: 20 }
   ]));
-  assert.equal(destination(config, "www.google.com"), "ai-residential", "the exact regional correction is not suppressed by a broad AI rule");
+  assert.equal(destination(config, "www.google.com"), "direct", "the protected Google hostname stays on the server egress");
   assert.equal(destination(config, "aistudio.google.com"), "direct", "earlier exact exclusion wins over a later broad AI rule");
   assert.equal(destination(config, "blocked.assistant.example"), "reject");
   assert.equal(destination(config, "api.assistant.example"), "ai-residential");

@@ -131,7 +131,7 @@ test("routing updates publish residential domain changes and explain the selecte
   assert.equal(bootstrap.aiDomainRules.customRules[0].id, "custom-ai");
 });
 
-test("Google regional correction is exact while other shared Google domains remain outside residential", async t => {
+test("ordinary Google domains remain outside residential", async t => {
   const { request } = await fixture(t);
   await request("/api/settings/ai-egress", "PATCH", { mode: "residential", upstream: { type: "http", server: "proxy.example", port: 8080 } });
   await request("/api/settings/routing", "PATCH", { mode: "smart", rules: [
@@ -139,9 +139,9 @@ test("Google regional correction is exact while other shared Google domains rema
   ] });
   const diagnose = async domain => (await request("/api/routing/diagnose", "POST", { domain })).json();
   const corrected = await diagnose("www.google.com");
-  assert.equal(corrected.aiDomain.eligible, true);
-  assert.equal(corrected.aiDomain.source, "regional");
-  assert.equal(corrected.aiDomain.desiredEgress, "residential");
+  assert.equal(corrected.aiDomain.eligible, false);
+  assert.equal(corrected.aiDomain.source, "shared");
+  assert.equal(corrected.aiDomain.desiredEgress, "server");
   const ordinary = await diagnose("accounts.google.com");
   assert.equal(ordinary.aiDomain.eligible, false);
   assert.equal(ordinary.aiDomain.source, "shared");

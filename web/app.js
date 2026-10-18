@@ -457,7 +457,7 @@ function renderAiDomainRules() {
   const rules = coverage.customRules || [];
   container.innerHTML = `<p class="field-hint">内置版本：${escapeHtml(coverage.version || "未提供")} · 自定义域名规则 ${rules.length} 条</p>
     <div class="ai-domain-grid">${domains("内置完整域名", coverage.domainNames)}${domains("内置域名后缀", coverage.domainSuffixes)}
-    ${domains("地区纠偏精确域名", coverage.regionalDomains)}
+    ${coverage.regionalDomains?.length ? domains("地区纠偏精确域名", coverage.regionalDomains) : ""}
     ${domains("已知共享服务保护", coverage.sharedDomains)}${domains("已知普通大域保护", coverage.protectedDomains)}</div>
     <details${rules.length ? " open" : ""}><summary>自定义覆盖与排除 · ${rules.length}</summary>
       <ul class="ai-domain-overrides">${rules.map(rule => `<li><strong>${escapeHtml(rule.value)}</strong>

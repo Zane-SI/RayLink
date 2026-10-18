@@ -45,13 +45,9 @@ test("AI client routing preserves original domain instead of resolving it before
   assert.equal(aiRules.some(item => item.action === "resolve"), false);
 });
 
-test("residential matching includes the exact Google regional correction but excludes other ordinary Google traffic", () => {
+test("residential matching excludes ordinary Google traffic", () => {
   for (const domain of ["claude.ai", "API.Anthropic.com.", "chatgpt.com", "api.openai.com", "gemini.google.com", "aistudio.google.com", "copilot.microsoft.com"]) assert.ok(isAiUpstreamDomain(domain), domain);
-  for (const domain of ["www.google.com", "WWW.GOOGLE.COM."]) {
-    assert.equal(isAiUpstreamDomain(domain), false, `${domain} is a regional correction, not an AI classification`);
-    assert.equal(isResidentialUpstreamDomain(domain), true, domain);
-  }
-  for (const domain of ["google.com", "news.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com",
+  for (const domain of ["google.com", "www.google.com", "WWW.GOOGLE.COM.", "news.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com",
     "github.com", "login.microsoftonline.com", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "images.workoscdn.com", "claude.ai.evil.example", "https://claude.ai", "a..claude.ai", ".claude.ai", "127.0.0.1", ""]) {
     assert.equal(isAiUpstreamDomain(domain), false, domain);
     assert.equal(isResidentialUpstreamDomain(domain), false, domain);

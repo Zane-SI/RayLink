@@ -2,7 +2,7 @@ import { domainToASCII } from "node:url";
 import { isIP } from "node:net";
 import { AI_DOMAIN_NAMES, AI_DOMAIN_SUFFIXES, normalizeRoutingPolicy } from "./policy.js";
 
-export const AI_DOMAIN_RULES_VERSION = "2026-10-18.1";
+export const AI_DOMAIN_RULES_VERSION = "2026-10-18.2";
 
 // Client routing also covers shared login/challenge dependencies. Residential
 // egress is narrower: those shared providers serve ordinary websites as well,
@@ -11,15 +11,12 @@ const sharedDomains = new Set([
   "challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com",
   "setup.workos.com", "images.workoscdn.com", "workos.imgix.net"
 ]);
-// Google maps this Host's server IP to a regional mobile endpoint that returns
-// a broken /m redirect. Keep the correction exact: account, mail, YouTube,
-// and every other ordinary Google hostname remain on the default server exit.
-export const REGIONAL_UPSTREAM_DOMAIN_NAMES = Object.freeze(["www.google.com"]);
+// Kept in the public view for backward compatibility. Regional correction
+// requires a separately configured non-residential exit; never borrow the AI
+// residential upstream for ordinary Google browsing.
+export const REGIONAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([]);
 export const AI_UPSTREAM_DOMAIN_NAMES = Object.freeze(AI_DOMAIN_NAMES.filter(domain => !sharedDomains.has(domain)));
-export const RESIDENTIAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([
-  ...AI_UPSTREAM_DOMAIN_NAMES,
-  ...REGIONAL_UPSTREAM_DOMAIN_NAMES
-]);
+export const RESIDENTIAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([...AI_UPSTREAM_DOMAIN_NAMES]);
 export const AI_UPSTREAM_DOMAIN_SUFFIXES = Object.freeze(AI_DOMAIN_SUFFIXES.filter(domain => !sharedDomains.has(domain)));
 const protectedDomains = Object.freeze([
   "google.com", "google.co.uk", "google.co.jp", "google.com.hk", "google.com.tw", "google.com.sg", "google.com.au", "google.de", "google.fr", "google.ca",
@@ -75,19 +72,15 @@ function normalizedDomain(value) {
 
 const matchesSuffix = (domain, suffix) => domain === suffix || domain.endsWith(`.${suffix}`);
 
-const regionalDescription = base => ({ ...base, eligible: true, source: "regional", match: "domain", value: REGIONAL_UPSTREAM_DOMAIN_NAMES[0],
-  reason: "命中 Google 地区纠偏精确域名；住宅启用并成功发布后，仅该完整域名使用住宅代理，其他普通 Google 流量保留默认出口。" });
-
 export function describeResidentialUpstreamDomain(value, policy = {}) {
   const domain = normalizedDomain(value);
   const result = { eligible: false, source: "none", match: null, value: null, ruleId: null,
     reason: "未命中 AI 专用域名；IP/CIDR 规则仅控制客户端入口，不扩大住宅域名范围。" };
   if (!domain) return { ...result, reason: "需要有效域名；IP、URL 或无法识别的目标不会据此认定为 AI 专用流量。" };
   const rules = normalizeRoutingPolicy(policy).rules;
-  const regional = REGIONAL_UPSTREAM_DOMAIN_NAMES.find(name => domain === name);
   const exact = AI_UPSTREAM_DOMAIN_NAMES.find(name => domain === name);
   const suffix = AI_UPSTREAM_DOMAIN_SUFFIXES.find(name => matchesSuffix(domain, name));
-  const builtin = regional || exact || suffix;
+  const builtin = exact || suffix;
   const shared = protectedDomains.find(name => matchesSuffix(domain, name));
   const custom = rules.find(rule => rule.enabled && (rule.match === "domain" ? domain === rule.value
     : rule.match === "domain_suffix" && matchesSuffix(domain, rule.value)));
@@ -95,12 +88,10 @@ export function describeResidentialUpstreamDomain(value, policy = {}) {
     const evidence = { ...result, source: "custom", match: custom.match, value: custom.value, ruleId: custom.id };
     if (custom.action !== "ai") return { ...evidence,
       reason: `优先命中自定义 ${custom.action} 规则，不进入住宅代理；客户端仍按该规则处理。` };
-    if (regional) return regionalDescription(evidence);
     if (shared && !builtin) return { ...evidence, source: "shared",
       reason: "命中共享服务或普通网站保护范围；自定义 AI 规则不会将其送入住宅代理。" };
     return { ...evidence, eligible: true, reason: "命中自定义 AI 专用域名；住宅启用并成功发布后，识别到该域名的 TCP 流量可使用住宅代理。" };
   }
-  if (regional) return regionalDescription(result);
   if (builtin) return { ...result, eligible: true, source: "builtin", match: exact ? "domain" : "domain_suffix", value: builtin,
     reason: "命中内置 AI 专用域名；住宅启用并成功发布后，识别到该域名的 TCP 流量可使用住宅代理。" };
   if (shared) return { ...result, source: "shared", match: "domain_suffix", value: shared,
@@ -110,7 +101,7 @@ export function describeResidentialUpstreamDomain(value, policy = {}) {
 
 export function isAiUpstreamDomain(value, policy = {}) {
   const description = describeResidentialUpstreamDomain(value, policy);
-  return description.eligible && description.source !== "regional";
+  return description.eligible;
 }
 
 export function isResidentialUpstreamDomain(value, policy = {}) {
