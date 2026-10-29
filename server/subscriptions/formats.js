@@ -11,7 +11,11 @@ import {
   PRIVATE_NETWORK_CIDRS,
   PROXY_DOMAIN_SUFFIXES,
   routeProbeUrlFromConfig,
-  ROUTE_POLICY_GROUPS
+  ROUTE_POLICY_GROUPS,
+  TAILSCALE_DOMAIN_SUFFIXES,
+  TAILNET_DOMAIN_SUFFIXES,
+  TAILNET_NETWORK_CIDRS,
+  TAILNET_DNS_ADDRESS
 } from "../routing/policy.js";
 import {
   getBundledAdblockDomains,
@@ -297,11 +301,16 @@ function mihomoDnsPolicyRules(policy) {
   }
   if (policy.mode === "smart") {
     for (const rule of [
+      ...TAILSCALE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value })),
       ...APP_STORE_DOMAIN_NAMES.map(value => ({ match: "domain", value })),
       ...APP_STORE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value }))
     ]) {
       const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
       if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue("domestic", "direct");
+    }
+    for (const domain of TAILNET_DOMAIN_SUFFIXES) {
+      const key = `+.${domain}`;
+      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = [`udp://${TAILNET_DNS_ADDRESS}:53`];
     }
     for (const domain of AI_DOMAIN_NAMES) {
       const key = domain;
@@ -734,6 +743,9 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     ipv6: false,
     "unified-delay": true,
     "tcp-concurrent": true,
+    // Supply exclusions for clients that enable native auto-route themselves.
+    // Importing a subscription must never enable TUN or replace its stack.
+    tun: { "route-exclude-address": [...TAILNET_NETWORK_CIDRS] },
     profile: {
       "store-selected": true,
       "store-fake-ip": true
@@ -746,7 +758,8 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       "enhanced-mode": "fake-ip",
       "fake-ip-range": "198.18.0.1/16",
       "fake-ip-filter": [...new Set([
-        ...pinnedHostnames, "localhost", ...LOCAL_DOMAIN_SUFFIXES.map((suffix) => `+.${suffix}`)
+        ...pinnedHostnames, "localhost", ...LOCAL_DOMAIN_SUFFIXES.map((suffix) => `+.${suffix}`),
+        ...(routePolicy.mode === "smart" ? [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((suffix) => `+.${suffix}`) : [])
       ])],
       "respect-rules": true,
       "default-nameserver": ["223.5.5.5"],
@@ -802,6 +815,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
       ...(routePolicy.mode === "smart" ? [
+        ...[...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
         ...APP_STORE_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},DIRECT`),
         ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`)
       ] : []),
@@ -1005,6 +1019,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       upstreams: {
         local: ["system"],
         domestic: ["https://223.5.5.5/dns-query"],
+        ...(routePolicy.mode === "smart" ? { tailnet: [`udp://${TAILNET_DNS_ADDRESS}:53`] } : {}),
         overseas: [
           "https://1.1.1.1/dns-query",
           "https://8.8.8.8/dns-query"
@@ -1035,6 +1050,12 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
+        ...(routePolicy.mode === "smart" ? TAILNET_DOMAIN_SUFFIXES.map((domain) => ({
+          domain_suffix: { match: domain, value: "tailnet" }
+        })) : []),
+        ...(routePolicy.mode === "smart" ? TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({
+          domain_suffix: { match: domain, value: "domestic" }
+        })) : []),
         ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_NAMES.map((domain) => ({
           domain: { match: domain, value: "domestic" }
         })) : []),
@@ -1172,6 +1193,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
       ...(routePolicy.mode === "smart" ? [
+        ...[...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } })),
         ...APP_STORE_DOMAIN_NAMES.map((domain) => ({ domain: { match: domain, policy: "DIRECT" } })),
         ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } }))
       ] : []),

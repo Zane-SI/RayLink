@@ -70,6 +70,7 @@ function explained(result, domain, addresses = [], warnings = []) {
     "local-ip": "主控解析地址命中私有网络规则",
     "proxy-domain": "命中明确境外服务域名规则",
     "app-store": "命中 App Store 内容、下载或 Apple 登录依赖直连规则",
+    tailscale: "命中 Tailscale 控制服务或本机私有网络直连规则",
     geosite: "命中国内域名规则",
     "geosite-cn": "命中完整国内域名规则集",
     "geoip-cn": "解析 IP 命中国内 IP 规则集",

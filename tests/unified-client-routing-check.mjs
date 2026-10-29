@@ -232,6 +232,7 @@ try {
   const version = (await run(binary, ["-v"])).stdout.trim().split("\n")[0];
   const targetPort = await listen(origin);
   const domestic = await resolver("domestic", [127, 0, 0, 1]);
+  const tailnet = await resolver("tailnet", [127, 0, 0, 1]);
   // 0.0.0.0 connects only to the local origin while not matching the generated
   // private/CN CIDR rules. This preserves MATCH behavior without replacing any
   // routing rule, installing routes, or contacting an external test endpoint.
@@ -282,6 +283,7 @@ try {
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
       .replaceAll("https://223.6.6.6/dns-query", domestic.endpoint)
+      .replaceAll("udp://100.100.100.100:53", tailnet.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#AI 代理", aiDns.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
@@ -337,6 +339,13 @@ try {
     assert.equal(unknown.now, "普通代理");
     await select("普通代理", ordinary);
     await select("AI 代理", aiChosen);
+
+    for (const [domain, dnsFixture] of [["controlplane.tailscale.com", domestic], ["device.fixture-tailnet.ts.net", tailnet]]) {
+      assert.equal(await dnsAddress(domain, dnsPort), "127.0.0.1", `${domain}: must avoid fake IP and use its local resolver`);
+      await request(domain, targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
+      assert.ok(dnsFixture.queries.some(query => query.domain === domain));
+      assert.ok(!remote.queries.some(query => query.domain === domain), `${domain}: must not leak DNS into the proxy path`);
+    }
 
     // Store authentication must not fall through to the ordinary/unknown
     // proxy while its catalog and images use DIRECT. Check the actual native
@@ -406,7 +415,8 @@ try {
     await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),
-      foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, realNativeConnections: 25, scope: "loopback fixtures only" }));
+      foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, tailscaleBypassAndMagicDns: true,
+      realNativeConnections: 27, scope: "loopback fixtures only" }));
     await stopCore();
     for (const fixture of fixtures.values()) await stopFixture(fixture);
     fixtures.clear();

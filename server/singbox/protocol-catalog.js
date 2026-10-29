@@ -10,7 +10,11 @@ import {
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
   PROXY_DOMAIN_SUFFIXES,
-  ROUTE_POLICY_GROUPS
+  ROUTE_POLICY_GROUPS,
+  TAILSCALE_DOMAIN_SUFFIXES,
+  TAILNET_DOMAIN_SUFFIXES,
+  TAILNET_NETWORK_CIDRS,
+  TAILNET_DNS_ADDRESS
 } from "../routing/policy.js";
 import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
@@ -695,6 +699,10 @@ function clientConfigForOutbounds(
           server: "223.5.5.5",
           path: "/dns-query"
         },
+        ...(routePolicy.mode === "smart" ? [{
+          type: "udp", tag: "dns-tailnet", server: TAILNET_DNS_ADDRESS,
+          server_port: 53, detour: "direct"
+        }] : []),
         {
           type: "tls",
           tag: "dns-remote",
@@ -717,6 +725,10 @@ function clientConfigForOutbounds(
         },
         ...customDnsRules,
         ...(routePolicy.mode === "smart" ? [{
+          domain_suffix: [...TAILNET_DOMAIN_SUFFIXES], action: "route", server: "dns-tailnet"
+        }, {
+          domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES], action: "route", server: "dns-domestic"
+        }, {
           domain: [...APP_STORE_DOMAIN_NAMES],
           domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
           action: "route",
@@ -748,6 +760,7 @@ function clientConfigForOutbounds(
         tag: "local-tun",
         address: ["172.19.0.1/30"],
         auto_route: true,
+        route_exclude_address: [...TAILNET_NETWORK_CIDRS],
         strict_route: true,
         stack: "system"
       },
@@ -820,6 +833,10 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
+        ...(routePolicy.mode === "smart" ? [
+          ...resolveRemaining({ domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES] }),
+          { domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES], action: "route", outbound: "direct" }
+        ] : []),
         ...(routePolicy.mode === "smart" ? [
           ...resolveRemaining({ domain: [...APP_STORE_DOMAIN_NAMES], domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES] }),
           {
