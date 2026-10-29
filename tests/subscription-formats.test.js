@@ -290,7 +290,7 @@ test("Mihomo preserves endpoint pins while excluding local discovery names from 
       const filter = body.split("  fake-ip-filter:\n")[1]?.split("  respect-rules:")[0];
       assert.ok(filter, `${format} must exclude local discovery names even without endpoint pins`);
       const names = [...filter.matchAll(/- "([^"]+)"/g)].map((match) => match[1]);
-      assert.deepEqual(names, [...Object.keys(endpointOverrides), "localhost", "+.local", "+.lan", "+.home.arpa"]);
+      assert.deepEqual(names, [...Object.keys(endpointOverrides), "localhost", "+.local", "+.lan", "+.home.arpa", "+.tailscale.com", "+.ts.net"]);
       assert.equal(new Set(names).size, names.length);
     }
   }
