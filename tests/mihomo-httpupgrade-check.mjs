@@ -66,25 +66,31 @@ try {
   const scenarios = [
     { type: "vless", transport: "none", format: "mihomo" },
     { type: "vless", transport: "ws", format: "mihomo" },
+    ...["mihomo", "mihomo-modern"].map(format => ({ type: "vless", transport: "ws", format, tlsFingerprint: true })),
     ...["mihomo", "mihomo-modern"].flatMap(format => ["vmess", "vless", "trojan"].map(type => ({ type, format, transport: "httpupgrade" })))
   ];
-  for (const { type, transport, format } of scenarios) {
+  for (const { type, transport, format, tlsFingerprint } of scenarios) {
     const port = await unusedPort();
     const mixedPort = await unusedPort();
     const profile = normalizeProtocolConfig({ ...defaultProtocolConfigs().find(item => item.type === type),
       enabled: true, port, listen: "127.0.0.1", transport: { type: transport, path: "/fixture" },
-      tls: type === "trojan" ? { mode: "certificate", serverName: "upgrade.fixture.invalid", certificatePath, keyPath } : { mode: "none" } });
+      tls: type === "trojan" || tlsFingerprint ? { mode: "certificate", serverName: "upgrade.fixture.invalid", certificatePath, keyPath } : { mode: "none" } });
     const config = buildSingBoxConfig({ host: { kind: "local", runtimeVersion: runtime, region: "test" }, protocols: [profile],
       users: [{ ...credential, state: "active", portalStatus: "active", usedGb: 0, quotaGb: 10, expiresAt: "2099-01-01", nodeScope: ["all"] }],
       masterPassword: credential.serverPassword }, { runtimeDns: { mode: "system" } });
     config.route.rules = [{ action: "route", outbound: "direct", override_address: "127.0.0.1", override_port: originPort }];
     const client = buildProtocolClientConfig({ profiles: [profile], server: "127.0.0.1", credential,
       routePolicy: { mode: "global-proxy" }, probeUrl: `http://192.0.2.1:${originPort}/` });
+    if (tlsFingerprint) {
+      const outbound = client.outbounds.find(outbound => outbound.server);
+      outbound.tls.alpn = ["http/1.1"];
+      outbound.tls.utls = { enabled: true, fingerprint: "chrome" };
+    }
     let { body } = buildSubscriptionArtifact({ format, singBoxConfig: client, routePolicy: { mode: "global-proxy" } });
     body = body.replace("mixed-port: 7890", `mixed-port: ${mixedPort}`);
     // Only the loopback TLS fixture uses a self-signed certificate. Product
     // exports retain certificate verification, asserted in subscription tests.
-    if (type === "trojan") body = body.replaceAll("skip-cert-verify: false", "skip-cert-verify: true");
+    if (type === "trojan" || tlsFingerprint) body = body.replaceAll("skip-cert-verify: false", "skip-cert-verify: true");
     const serverPath = join(directory, "server.json");
     const clientPath = join(directory, "client.yaml");
     await writeFile(serverPath, JSON.stringify(config));

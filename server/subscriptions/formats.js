@@ -380,6 +380,10 @@ function applyMihomoTls(proxy, outbound) {
     proxy[serverNameField] = outbound.tls.server_name;
   }
   proxy["skip-cert-verify"] = false;
+  if (outbound.tls.alpn?.length) proxy.alpn = [...outbound.tls.alpn];
+  if (outbound.tls.utls?.enabled && outbound.tls.utls.fingerprint) {
+    proxy["client-fingerprint"] = outbound.tls.utls.fingerprint;
+  }
   if (outbound.tls.reality?.enabled) {
     proxy["reality-opts"] = {
       "public-key": outbound.tls.reality.public_key,

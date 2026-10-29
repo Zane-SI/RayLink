@@ -53,6 +53,28 @@ test("Mihomo HTTPUpgrade exports use the supported WebSocket upgrade mode and re
   }
 });
 
+test("Mihomo certificate TLS exports retain explicit ALPN and enabled client fingerprints", () => {
+  for (const format of ["mihomo", "mihomo-modern"]) {
+    for (const type of ["vmess", "vless", "trojan"]) {
+      for (const enabled of [false, true]) {
+        const outbound = {
+          type, tag: "tls-fixture", server: "cdn.example", server_port: 443,
+          uuid: "3365c019-4b70-4dd5-9b3a-48d83a22f24d", password: "fixture",
+          tls: { enabled: true, server_name: "cdn.example", alpn: ["http/1.1"], utls: { enabled, fingerprint: "chrome" } },
+          transport: { type: "ws", path: "/fixture", headers: { Host: "cdn.example" } }
+        };
+        const original = structuredClone(outbound);
+        const { body } = buildSubscriptionArtifact({ format, singBoxConfig: { outbounds: [outbound] } });
+        assert.match(body, /alpn:\n\s+- "http\/1.1"/);
+        assert.equal(body.includes('client-fingerprint: "chrome"'), enabled);
+        assert.match(body, /skip-cert-verify: false/);
+        assert.match(body, /network: "ws"/);
+        assert.deepEqual(outbound, original, "Export must not mutate the shared configuration");
+      }
+    }
+  }
+});
+
 test("smart Mihomo subscriptions validate domestic DNS candidates without changing explicit modes", () => {
   for (const format of ["mihomo", "mihomo-modern"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
