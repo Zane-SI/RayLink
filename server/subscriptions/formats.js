@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import {
   AI_DOMAIN_NAMES,
   AI_DOMAIN_SUFFIXES,
+  APP_STORE_DOMAIN_NAMES,
+  APP_STORE_DOMAIN_SUFFIXES,
   CHINA_FALLBACK_DOMAIN_SUFFIXES,
   createRoutePolicyCandidates,
   LOCAL_DOMAIN_SUFFIXES,
@@ -294,6 +296,13 @@ function mihomoDnsPolicyRules(policy) {
     priorDomains.push(rule);
   }
   if (policy.mode === "smart") {
+    for (const rule of [
+      ...APP_STORE_DOMAIN_NAMES.map(value => ({ match: "domain", value })),
+      ...APP_STORE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value }))
+    ]) {
+      const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
+      if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue("domestic", "direct");
+    }
     for (const domain of AI_DOMAIN_NAMES) {
       const key = domain;
       if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("remote", "ai");
@@ -792,6 +801,10 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     rules: [
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
+      ...(routePolicy.mode === "smart" ? [
+        ...APP_STORE_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},DIRECT`),
+        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`)
+      ] : []),
       ...AI_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},${aiPolicy}`),
       ...AI_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},${aiPolicy}`),
       ...(adblockProvider ? ["RULE-SET,raylink-adblock,REJECT"] : []),
@@ -1022,6 +1035,12 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
+        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_NAMES.map((domain) => ({
+          domain: { match: domain, value: "domestic" }
+        })) : []),
+        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({
+          domain_suffix: { match: domain, value: "domestic" }
+        })) : []),
         ...(routePolicy.mode === "smart" ? AI_DOMAIN_NAMES.map((domain) => ({
           domain: { match: domain, value: "ai" }
         })) : []),
@@ -1152,6 +1171,10 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
     rules: [
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
+      ...(routePolicy.mode === "smart" ? [
+        ...APP_STORE_DOMAIN_NAMES.map((domain) => ({ domain: { match: domain, policy: "DIRECT" } })),
+        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } }))
+      ] : []),
       // Default DNS connections follow the AI exit unless explicitly overridden.
       ...(usesAiDns ? [{ ip_cidr: { match: "9.9.9.9/32", policy: ROUTE_POLICY_GROUPS.ai.name, no_resolve: true } }] : []),
       ...AI_DOMAIN_NAMES.map((domain) => ({

@@ -338,6 +338,21 @@ try {
     await select("普通代理", ordinary);
     await select("AI 代理", aiChosen);
 
+    // Store authentication must not fall through to the ordinary/unknown
+    // proxy while its catalog and images use DIRECT. Check the actual native
+    // rule, delivered response and DNS resolver with the normal proxy selected.
+    for (const [domain, rule] of [
+      ["apps.apple.com", "DomainSuffix"], ["amp-api.apps.apple.com", "DomainSuffix"],
+      ["p48-buy.itunes.apple.com", "DomainSuffix"], ["is1-ssl.mzstatic.com", "DomainSuffix"],
+      ["gsa.apple.com", "Domain"], ["idmsa.apple.com", "Domain"]
+    ]) {
+      const answer = await api(`/dns/query?name=${domain}&type=A`);
+      assert.ok(answer.Answer?.some(({ data }) => data === "127.0.0.1"), `${domain}: must use the domestic DNS fixture`);
+      await request(domain, targetPort, "DIRECT", rule, ["DIRECT"]);
+      assert.ok(domestic.queries.some(query => query.domain === domain));
+      assert.ok(!remote.queries.some(query => query.domain === domain), `${domain}: Store DNS must not take the proxy path`);
+    }
+
     // A geographical answer must not steal explicit AI, overseas or custom
     // rules. Prime and inspect native DNS before exercising those routes.
     for (const domain of ["chatgpt.com", "www.google.com.hk", "forced-cloud.fixture.invalid"]) {
@@ -391,7 +406,7 @@ try {
     await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),
-      foreignIpRetainsUnknownGroup: true, realNativeConnections: 19, scope: "loopback fixtures only" }));
+      foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, realNativeConnections: 25, scope: "loopback fixtures only" }));
     await stopCore();
     for (const fixture of fixtures.values()) await stopFixture(fixture);
     fixtures.clear();

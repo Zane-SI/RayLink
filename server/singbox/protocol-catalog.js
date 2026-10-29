@@ -3,6 +3,8 @@ import { createHmac } from "node:crypto";
 import {
   AI_DOMAIN_NAMES,
   AI_DOMAIN_SUFFIXES,
+  APP_STORE_DOMAIN_NAMES,
+  APP_STORE_DOMAIN_SUFFIXES,
   CHINA_FALLBACK_DOMAIN_SUFFIXES,
   DEFAULT_ROUTE_PROBE_URL,
   LOCAL_DOMAIN_SUFFIXES,
@@ -715,6 +717,11 @@ function clientConfigForOutbounds(
         },
         ...customDnsRules,
         ...(routePolicy.mode === "smart" ? [{
+          domain: [...APP_STORE_DOMAIN_NAMES],
+          domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
+          action: "route",
+          server: "dns-domestic"
+        }, {
           domain: [...AI_DOMAIN_NAMES],
           domain_suffix: [...AI_DOMAIN_SUFFIXES],
           ...(aiUnavailable ? { action: "reject" } : { action: "route", server: "dns-ai" })
@@ -813,6 +820,15 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
+        ...(routePolicy.mode === "smart" ? [
+          ...resolveRemaining({ domain: [...APP_STORE_DOMAIN_NAMES], domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES] }),
+          {
+            domain: [...APP_STORE_DOMAIN_NAMES],
+            domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
+            action: "route",
+            outbound: ROUTE_POLICY_GROUPS.direct.tag
+          }
+        ] : []),
         ...managedAiRouteRules,
         { rule_set: "adblock-johnshall", action: "reject" },
         ...managedRouteRules
