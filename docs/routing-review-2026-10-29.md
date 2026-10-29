@@ -60,3 +60,26 @@ configuration check passed. An isolated real-network profile bound to physical
 `en0` received Google/gstatic 204, GitHub/Baidu 200 and OpenAI API 401. Google
 root returned a Hong Kong redirect; anonymous ChatGPT returned a challenge.
 These observations do not establish authenticated ChatGPT browser acceptance.
+
+## Deployment and remaining acceptance
+
+The runtime source patch was deployed at commit `ac67bcf` and the actual public
+subscription was downloaded again: eight unchanged nodes, 58,417 inline adblock
+domains, no generated Mihomo TUN block and no blanket `ts.net` private DNS.
+Source hashes, SQLite integrity, services and unchanged main runtime/CDN/Caddy
+configuration were verified independently; a protected rollback backup exists.
+
+The newly downloaded subscription was loaded in an isolated native Mihomo bound
+to the Mac's physical interface. Its default path returned Google homepage 200
+after following the Hong Kong redirect, gstatic 204, GitHub/Baidu 200 and OpenAI
+API 401. ChatGPT returned a challenge response. This test preserves the user's
+currently selected working subscription; it is not an authenticated browser test.
+
+The CDN candidate did not pass the final Mac checks: three requests failed,
+while the default path continued to respond. Server loopback, origin and
+Cloudflare WebSocket probes each returned 101, and the subscribed UUID matched
+an authorized CDN user. Direct Mac probes to both current Cloudflare addresses
+timed out. No CDN IP was pinned and no node was removed. This remains a client
+network/CDN-entry acceptance failure, not a claim that the CDN data path is
+fully verified. The user deferred switching profiles, so final in-app App Store,
+authenticated ChatGPT and Tailscale-peer acceptance remain outstanding.
