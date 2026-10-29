@@ -71,7 +71,8 @@ test("AI and explicit user routes precede ad blocking in every full subscription
     singBoxConfig: config,
     routePolicy
   }).body;
-  assert.match(mihomo, /raylink-adblock:\n\s+type: "http"[\s\S]*?format: "mrs"[\s\S]*?url: "https:\/\/sub\.example\.com\/rule-sets\/adblock-johnshall\.mrs"/);
+  assert.match(mihomo, /raylink-adblock:\n\s+type: "inline"[\s\S]*?format: "yaml"[\s\S]*?payload:/);
+  assert.doesNotMatch(mihomo, /adblock-johnshall\.mrs/);
   const mihomoRules = mihomo.split("\nrules:\n")[1];
   assert.ok(mihomoRules.indexOf("DOMAIN,r.openai.com,DIRECT") < mihomoRules.indexOf("DOMAIN-SUFFIX,openai.com,AI 代理"));
   assert.ok(mihomoRules.indexOf("DOMAIN-SUFFIX,openai.com,AI 代理") < mihomoRules.indexOf("RULE-SET,raylink-adblock,REJECT"));
@@ -98,6 +99,16 @@ test("offline subscriptions retain a complete inline ad-block fallback", () => {
   assert.match(provider, /behavior: "domain"/);
   assert.match(provider, /\+\.adservice\.google\.com/);
   assert.doesNotMatch(provider, /IP-CIDR/);
+});
+
+test("public Mihomo subscriptions carry all adblock rules without a startup download", () => {
+  for (const format of ["mihomo", "mihomo-modern"]) {
+    const body = buildSubscriptionArtifact({ format, singBoxConfig: clientConfig("https://unavailable.example/rule-sets/") }).body;
+    const provider = body.split("  raylink-adblock:\n")[1].split("\nrules:\n")[0];
+    assert.match(provider, /type: "inline"/);
+    assert.doesNotMatch(provider, /type: "http"|\n\s+url:|format: "mrs"/);
+    assert.equal([...provider.matchAll(/- "\+\./g)].length, getBundledAdblockDomains().length);
+  }
 });
 
 test("direct and global modes protect AI dependencies before ad blocking", () => {

@@ -79,12 +79,12 @@ export const APP_STORE_DOMAIN_NAMES = Object.freeze([
   "gsa.apple.com", "idmsa.apple.com", "account.apple.com", "appleid.cdn-apple.com"
 ]);
 
-// Control/relay hosts use public DNS; private MagicDNS names must stay local.
+// Control/relay hosts use public DNS; private MagicDNS stays with the client OS.
 // https://tailscale.com/docs/reference/faq/other-vpns
 export const TAILSCALE_DOMAIN_SUFFIXES = Object.freeze(["tailscale.com"]);
-export const TAILNET_DOMAIN_SUFFIXES = Object.freeze(["ts.net"]);
+// This suffix also contains public Funnel hosts; never force its DNS to Quad100.
+export const TAILSCALE_SHARED_DOMAIN_SUFFIXES = Object.freeze(["ts.net"]);
 export const TAILNET_NETWORK_CIDRS = Object.freeze(["100.64.0.0/10", "fd7a:115c:a1e0::/48"]);
-export const TAILNET_DNS_ADDRESS = "100.100.100.100";
 
 export const CHINA_FALLBACK_DOMAIN_SUFFIXES = Object.freeze([
   ".cn",
@@ -319,9 +319,6 @@ export function routingDecisionForDomain(inputPolicy, inputDomain, { addresses }
   }
   if (policy.mode === "global-proxy") {
     return { action: "proxy", source: "mode", ruleId: null, dns: "remote" };
-  }
-  if (TAILNET_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "direct", source: "tailscale", ruleId: null, dns: "system" };
   }
   if (TAILSCALE_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
     return { action: "direct", source: "tailscale", ruleId: null, dns: "domestic" };

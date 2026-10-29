@@ -10,7 +10,9 @@ The generated files serve three full-profile clients without embedding 58,417
 rules in every subscription:
 
 - `adblock-johnshall.srs` for sing-box;
-- `adblock-johnshall.mrs` for Mihomo;
+- `adblock-johnshall.mrs` for compatible external consumers; RayLink's complete
+  Mihomo subscriptions embed the verified domain baseline so cold startup does
+  not depend on an HTTP provider download;
 - `adblock-johnshall-egern.yaml` for Egern.
 
 `adblock-johnshall.json` is the verified offline fallback and the source for

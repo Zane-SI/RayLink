@@ -30,6 +30,15 @@ let mixedPort;
 let requestNumber = 0;
 let pendingStartup;
 let startupFailure;
+const pendingRuleSockets = new Set();
+let ruleDownloadAttempts = 0;
+const remoteRuleServer = createTcpServer(socket => {
+  // A newly downloaded provider is unavailable. Keep its HTTP request pending
+  // so a client depending on it cannot silently pass a warm-cache-only test.
+  pendingRuleSockets.add(socket);
+  ruleDownloadAttempts += 1;
+  socket.on("close", () => pendingRuleSockets.delete(socket));
+});
 
 async function listen(server) {
   server.listen(0, "127.0.0.1");
@@ -228,11 +237,11 @@ async function request(domain, targetPort, expected, rule, chains, address = dom
 
 const origin = createServer((_request, response) => setTimeout(() => response.end("DIRECT"), 180));
 try {
+  const remoteRulePort = await listen(remoteRuleServer);
   await chmod(directory, 0o700);
   const version = (await run(binary, ["-v"])).stdout.trim().split("\n")[0];
   const targetPort = await listen(origin);
   const domestic = await resolver("domestic", [127, 0, 0, 1]);
-  const tailnet = await resolver("tailnet", [127, 0, 0, 1]);
   // 0.0.0.0 connects only to the local origin while not matching the generated
   // private/CN CIDR rules. This preserves MATCH behavior without replacing any
   // routing rule, installing routes, or contacting an external test endpoint.
@@ -275,7 +284,8 @@ try {
     const routePolicy = { mode: "smart", aiSelection: "manual", aiExit: { mode: "pinned", hostId: "pinned" }, rules: [
       { match: "domain", value: "forced-cloud.fixture.invalid", action: "proxy", dns: "remote" }
     ] };
-    const generated = buildMultiHostProtocolClientConfig({ hosts, credential, probeUrl: `http://127.0.0.1:${targetPort}/health`, routePolicy });
+    const generated = buildMultiHostProtocolClientConfig({ hosts, credential, probeUrl: `http://127.0.0.1:${targetPort}/health`, routePolicy,
+      ruleSetBaseUrl: `http://ruleset.fixture.invalid:${remoteRulePort}/rule-sets/` });
     const exported = buildSubscriptionArtifact({ format, singBoxConfig: generated, routePolicy }).body;
     const fixtureProxies = [...fixtures.values()].map(({ name, port }) => ({ name, type: "http", server: "127.0.0.1", port }));
     let yaml = exported.replace(/^mixed-port:.*$/m, `mixed-port: ${mixedPort}\nexternal-controller: "127.0.0.1:${controllerPort}"\nfind-process-mode: off\ngeo-auto-update: false`)
@@ -283,7 +293,6 @@ try {
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
       .replaceAll("https://223.6.6.6/dns-query", domestic.endpoint)
-      .replaceAll("udp://100.100.100.100:53", tailnet.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#AI 代理", aiDns.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
@@ -339,8 +348,12 @@ try {
     assert.equal(unknown.now, "普通代理");
     await select("普通代理", ordinary);
     await select("AI 代理", aiChosen);
+    await request("www.gstatic.com", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "普通代理"]);
+    await assert.rejects(() => run("curl", ["--silent", "--show-error", "--fail", "--noproxy", "", "--max-time", "2",
+      "--socks5-hostname", `127.0.0.1:${mixedPort}`, `http://adservice.google.com:${targetPort}/blocked-ad`], { timeout: 4000 }),
+    "Cold-start resilience must retain actual ad blocking after ordinary traffic succeeds");
 
-    for (const [domain, dnsFixture] of [["controlplane.tailscale.com", domestic], ["device.fixture-tailnet.ts.net", tailnet]]) {
+    for (const [domain, dnsFixture] of [["controlplane.tailscale.com", domestic]]) {
       assert.equal(await dnsAddress(domain, dnsPort), "127.0.0.1", `${domain}: must avoid fake IP and use its local resolver`);
       await request(domain, targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
       assert.ok(dnsFixture.queries.some(query => query.domain === domain));
@@ -413,9 +426,10 @@ try {
     }
     await request("www.google.com.hk", targetPort, "ORDINARY", "DomainSuffix", [ordinary, "普通代理"]);
     await request("unlisted-domestic-fixture.cn", targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
+    assert.equal(ruleDownloadAttempts, 0, "Cold start must not require downloading the advertised remote adblock resource");
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),
-      foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, tailscaleBypassAndMagicDns: true,
+      foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, tailscaleControlBypass: true, remoteRuleDownloadIndependent: true,
       realNativeConnections: 27, scope: "loopback fixtures only" }));
     await stopCore();
     for (const fixture of fixtures.values()) await stopFixture(fixture);
@@ -427,6 +441,8 @@ try {
   await stopCore();
   for (const fixture of fixtures.values()) await stopFixture(fixture);
   for (const { socket } of resolvers) socket.close();
+  for (const socket of pendingRuleSockets) socket.destroy();
+  if (remoteRuleServer.listening) await new Promise(resolve => remoteRuleServer.close(resolve));
   origin.closeAllConnections();
   if (origin.listening) await new Promise((resolve) => origin.close(resolve));
   await rm(directory, { recursive: true, force: true });

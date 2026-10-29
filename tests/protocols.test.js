@@ -226,7 +226,7 @@ test("client configuration includes every enabled user-facing protocol", () => {
   assert.deepEqual(config.inbounds.map((inbound) => inbound.type), ["tun", "mixed"]);
   assert.equal(config.inbounds[0].auto_route, true);
   assert.equal(config.inbounds[0].strict_route, true);
-  assert.deepEqual(config.dns.servers.map((server) => server.tag), ["dns-local", "dns-domestic", "dns-tailnet", "dns-remote", "dns-ai"]);
+  assert.deepEqual(config.dns.servers.map((server) => server.tag), ["dns-local", "dns-domestic", "dns-remote", "dns-ai"]);
   assert.deepEqual(config.dns.servers[0], {
     type: "local",
     tag: "dns-local"

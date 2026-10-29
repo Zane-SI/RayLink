@@ -13,9 +13,7 @@ import {
   routeProbeUrlFromConfig,
   ROUTE_POLICY_GROUPS,
   TAILSCALE_DOMAIN_SUFFIXES,
-  TAILNET_DOMAIN_SUFFIXES,
-  TAILNET_NETWORK_CIDRS,
-  TAILNET_DNS_ADDRESS
+  TAILSCALE_SHARED_DOMAIN_SUFFIXES
 } from "../routing/policy.js";
 import {
   getBundledAdblockDomains,
@@ -73,15 +71,10 @@ function remoteAdblockUrl(config, filename) {
 function mihomoAdblockProvider(config) {
   const source = adblockRuleSet(config);
   if (!source) return null;
-  const url = remoteAdblockUrl(config, "adblock-johnshall.mrs");
-  return url ? {
-    type: "http",
-    behavior: "domain",
-    format: "mrs",
-    url,
-    interval: 86400,
-    proxy: "DIRECT"
-  } : {
+  // Mihomo suspends ordinary connections while remote providers initialize.
+  // Ship the verified baseline so a cold refresh cannot block all networking
+  // on a rule download. Bundle updates arrive with the complete subscription.
+  return {
     type: "inline",
     behavior: "domain",
     format: "yaml",
@@ -307,10 +300,6 @@ function mihomoDnsPolicyRules(policy) {
     ]) {
       const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
       if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue("domestic", "direct");
-    }
-    for (const domain of TAILNET_DOMAIN_SUFFIXES) {
-      const key = `+.${domain}`;
-      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = [`udp://${TAILNET_DNS_ADDRESS}:53`];
     }
     for (const domain of AI_DOMAIN_NAMES) {
       const key = domain;
@@ -743,9 +732,6 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     ipv6: false,
     "unified-delay": true,
     "tcp-concurrent": true,
-    // Supply exclusions for clients that enable native auto-route themselves.
-    // Importing a subscription must never enable TUN or replace its stack.
-    tun: { "route-exclude-address": [...TAILNET_NETWORK_CIDRS] },
     profile: {
       "store-selected": true,
       "store-fake-ip": true
@@ -759,7 +745,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       "fake-ip-range": "198.18.0.1/16",
       "fake-ip-filter": [...new Set([
         ...pinnedHostnames, "localhost", ...LOCAL_DOMAIN_SUFFIXES.map((suffix) => `+.${suffix}`),
-        ...(routePolicy.mode === "smart" ? [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((suffix) => `+.${suffix}`) : [])
+        ...(routePolicy.mode === "smart" ? [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILSCALE_SHARED_DOMAIN_SUFFIXES].map((suffix) => `+.${suffix}`) : [])
       ])],
       "respect-rules": true,
       "default-nameserver": ["223.5.5.5"],
@@ -815,7 +801,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
       ...(routePolicy.mode === "smart" ? [
-        ...[...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
+        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
         ...APP_STORE_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},DIRECT`),
         ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`)
       ] : []),
@@ -1019,7 +1005,6 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       upstreams: {
         local: ["system"],
         domestic: ["https://223.5.5.5/dns-query"],
-        ...(routePolicy.mode === "smart" ? { tailnet: [`udp://${TAILNET_DNS_ADDRESS}:53`] } : {}),
         overseas: [
           "https://1.1.1.1/dns-query",
           "https://8.8.8.8/dns-query"
@@ -1050,9 +1035,6 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
-        ...(routePolicy.mode === "smart" ? TAILNET_DOMAIN_SUFFIXES.map((domain) => ({
-          domain_suffix: { match: domain, value: "tailnet" }
-        })) : []),
         ...(routePolicy.mode === "smart" ? TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({
           domain_suffix: { match: domain, value: "domestic" }
         })) : []),
@@ -1193,7 +1175,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
       ...(routePolicy.mode === "smart" ? [
-        ...[...TAILSCALE_DOMAIN_SUFFIXES, ...TAILNET_DOMAIN_SUFFIXES].map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } })),
+        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } })),
         ...APP_STORE_DOMAIN_NAMES.map((domain) => ({ domain: { match: domain, policy: "DIRECT" } })),
         ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } }))
       ] : []),
