@@ -6,8 +6,8 @@ pinned by SHA-256 in `manifest.json`. All 128 upstream `IP-CIDR` rules (125
 networks after normalization) are deliberately excluded because blocking
 shared addresses can break unrelated domestic applications and CDN traffic.
 
-The generated files serve three full-profile clients without embedding 58,417
-rules in every subscription:
+The bundle supports complete profiles and compatible external consumers through
+these generated artifacts:
 
 - `adblock-johnshall.srs` for sing-box;
 - `adblock-johnshall.mrs` for compatible external consumers; RayLink's complete
@@ -15,9 +15,9 @@ rules in every subscription:
   not depend on an HTTP provider download;
 - `adblock-johnshall-egern.yaml` for Egern.
 
-`adblock-johnshall.json` is the verified offline fallback and the source for
-inline profiles used when the control-plane certificate cannot be trusted by a
-client-side rule downloader.
+`adblock-johnshall.json` supplies the checksum-verified baseline for all complete
+Mihomo profiles and for offline profiles where client-side rule downloads cannot
+be trusted or used.
 
 To prepare a reviewed update, run the builder into a new empty directory with
 the approved sing-box 1.14.2 and a current Mihomo binary. Review upstream
