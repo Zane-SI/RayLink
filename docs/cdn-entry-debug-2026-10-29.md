@@ -1,5 +1,7 @@
 # CDN entry investigation — 2026-10-29
 
+Historical snapshot. Follow-up experiments, cleanup and the export-fix deployment are recorded in [2026-10-30](cdn-entry-debug-2026-10-30.md).
+
 The CDN repair has **not passed public stability acceptance**. The original
 CDN adapter, Caddyfile and generated subscriptions remain in production. The
 seven original protocol nodes and main runtime were preserved. This report
