@@ -7,7 +7,7 @@ The user authorizes repairing the audit findings, with particular attention to s
 Required changes:
 
 1. Upgrade affected production dependencies with a locked reproducible install. Bound MCP input elements, node scopes and advanced JSON depth before business dispatch; retain authentication, revocation, concurrency, idempotency and role/scopes.
-2. Create and reopen SQLite DB/WAL/SHM with owner-only access. Preserve data and support in-memory test stores. Set the control-plane service's private creation mask.
+2. Create and reopen SQLite DB/WAL/SHM with owner-only access. Preserve data and support in-memory test stores. Use per-file protection; a global service umask must not make shared Caddy configuration unreadable.
 3. Correct stale Google residential DNS assertions. Adapt native provider discovery/health verification to current Mihomo without weakening real payload, authorization or failover checks. Include CDN authentication/accounting in production acceptance and test approved old/new Mihomo versions.
 4. Use independent domestic DNS providers for smart Mihomo subscriptions and relevant domestic policies/endpoint bootstrap. Avoid speculative foreign fallback DNS queries when domestic answers are valid. Retain local/private DNS, explicit AI/foreign rules, domestic address filtering, cache and actual fallback on error.
 5. Review and pin the November CN geolocation candidate, preserving source/license/checksums, exact foreign holes and native/inline equivalence. Keep domain data separately pinned and report source ages honestly.

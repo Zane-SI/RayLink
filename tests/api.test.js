@@ -41,7 +41,7 @@ async function startTestApp(overrides = {}) {
     publicOrigin: "http://127.0.0.1",
     runtimeMode: "dry-run",
     // Keep mock capabilities independent of whatever Runtime is installed on the developer's PATH.
-    singBoxBinary: process.env.SING_BOX_BIN || join(dataDir, "uninstalled-test-runtime"),
+    singBoxBinary: join(dataDir, "uninstalled-test-runtime"),
     nodeHeartbeatMinIntervalMs: 0,
     runtimeUpdateCheckIntervalMs: 0,
     installer: createTestInstaller(),
