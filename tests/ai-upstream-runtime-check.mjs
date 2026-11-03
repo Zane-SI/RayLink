@@ -14,6 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { buildSingBoxConfig } from "../server/singbox/config.js";
 import { buildProtocolClientConfig, defaultProtocolConfigs } from "../server/singbox/protocol-catalog.js";
+import { createFixturePortAllocator } from "./helpers/fixture-port.js";
 const run = (binary, args, options = {}) => promisify(execFile)(binary, args, { timeout: 10000, ...options });
 const binary = process.env.SING_BOX_BIN || "sing-box";
 const customDomains = process.argv.includes("--custom-domains");
@@ -37,7 +38,7 @@ async function listen(server) {
   server.on("connection", socket => { allSockets.add(socket); socket.on("error", () => {}); socket.on("close", () => allSockets.delete(socket)); });
   server.listen(0, "127.0.0.1"); await once(server, "listening"); return server.address().port;
 }
-async function unusedPort() { const server = tcpServer(); server.listen(0, "127.0.0.1"); await once(server, "listening"); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
+const unusedPort = createFixturePortAllocator();
 async function stop(runtime) {
   if (runtime?.child.exitCode === null && runtime.child.signalCode === null) { const exited = once(runtime.child, "exit"); runtime.child.kill("SIGTERM"); const timer = setTimeout(() => runtime.child.kill("SIGKILL"), 2000); await exited; clearTimeout(timer); }
 }
@@ -48,7 +49,7 @@ async function launch(config, name) {
   const runtime = { child, log: "" }; children.add(runtime);
   child.stdout.on("data", data => { runtime.log = (runtime.log + data).slice(-12000); }); child.stderr.on("data", data => { runtime.log = (runtime.log + data).slice(-12000); });
   for (let i = 0; i < 100 && !runtime.log.includes("sing-box started") && child.exitCode === null; i++) await delay(50);
-  assert.ok(runtime.log.includes("sing-box started"), "fixture Runtime failed to start"); return runtime;
+  assert.ok(runtime.log.includes("sing-box started"), `fixture Runtime ${name} failed to start (exit ${child.exitCode}): ${runtime.log}`); return runtime;
 }
 function forward(state, socket, host, port, head, response) {
   state.destinations.push({ host, port });

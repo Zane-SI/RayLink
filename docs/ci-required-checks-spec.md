@@ -15,3 +15,5 @@ Requirements:
 5. Merge PR23 at its tested exact head to repair main, then verify main's new run and active protection. Do not bypass the required check or alter production servers.
 
 Review new CI changes against `85c2266`; existing PR23 product changes were requested, reviewed and deployed in the preceding work. Preserve their boundaries and the recorded pending native-App/old-Wi-Fi acceptance.
+
+The first aggregation run (`41598160965`) correctly blocked on a native AI-upstream fixture startup failure in one matrix variant. Its generic error omitted the native cause. An OS port-reuse control reproduces the same startup symptom: closing each temporary listener allows the next allocation to reuse its port, giving two Runtime inbounds the same endpoint. Allocate distinct ports for the fixture process, retain native startup diagnostics, and cover actual listener binding under forced port reuse. The original CI event's exact cause remains unconfirmed because its native log was discarded; do not label a passing retry as proof of that cause. Rerun the complete native and GitHub matrix checks before enabling protection.
