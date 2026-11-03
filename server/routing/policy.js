@@ -68,6 +68,24 @@ export const PROXY_DOMAIN_SUFFIXES = Object.freeze([
   "t.co", "twimg.com", "telegram.org", "t.me"
 ]);
 
+// Keep Store content/CDNs and account authentication on the same local exit.
+// Geographic inference alone splits these requests between DIRECT and MATCH.
+// Scope this to Store dependencies, not all Apple/iCloud services.
+// https://support.apple.com/en-us/101555 (Apps and additional content / Apple Account)
+export const APP_STORE_DOMAIN_SUFFIXES = Object.freeze([
+  "apps.apple.com", "itunes.apple.com", "mzstatic.com"
+]);
+export const APP_STORE_DOMAIN_NAMES = Object.freeze([
+  "gsa.apple.com", "idmsa.apple.com", "account.apple.com", "appleid.cdn-apple.com"
+]);
+
+// Control/relay hosts use public DNS; private MagicDNS stays with the client OS.
+// https://tailscale.com/docs/reference/faq/other-vpns
+export const TAILSCALE_DOMAIN_SUFFIXES = Object.freeze(["tailscale.com"]);
+// This suffix also contains public Funnel hosts; never force its DNS to Quad100.
+export const TAILSCALE_SHARED_DOMAIN_SUFFIXES = Object.freeze(["ts.net"]);
+export const TAILNET_NETWORK_CIDRS = Object.freeze(["100.64.0.0/10", "fd7a:115c:a1e0::/48"]);
+
 export const CHINA_FALLBACK_DOMAIN_SUFFIXES = Object.freeze([
   ".cn",
   "126.com",
@@ -301,6 +319,12 @@ export function routingDecisionForDomain(inputPolicy, inputDomain, { addresses }
   }
   if (policy.mode === "global-proxy") {
     return { action: "proxy", source: "mode", ruleId: null, dns: "remote" };
+  }
+  if (TAILSCALE_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
+    return { action: "direct", source: "tailscale", ruleId: null, dns: "domestic" };
+  }
+  if (APP_STORE_DOMAIN_NAMES.includes(domain) || APP_STORE_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
+    return { action: "direct", source: "app-store", ruleId: null, dns: "domestic" };
   }
   if (AI_DOMAIN_NAMES.includes(domain) || AI_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
     return { action: "ai", source: "ai", ruleId: null, dns: "remote" };

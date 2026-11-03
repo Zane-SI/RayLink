@@ -3,13 +3,18 @@ import { createHmac } from "node:crypto";
 import {
   AI_DOMAIN_NAMES,
   AI_DOMAIN_SUFFIXES,
+  APP_STORE_DOMAIN_NAMES,
+  APP_STORE_DOMAIN_SUFFIXES,
   CHINA_FALLBACK_DOMAIN_SUFFIXES,
   DEFAULT_ROUTE_PROBE_URL,
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
   PROXY_DOMAIN_SUFFIXES,
-  ROUTE_POLICY_GROUPS
+  ROUTE_POLICY_GROUPS,
+  TAILSCALE_DOMAIN_SUFFIXES,
+  TAILNET_NETWORK_CIDRS
 } from "../routing/policy.js";
+import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 
 const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
@@ -545,6 +550,14 @@ function clientConfigForOutbounds(
           url: new URL("geoip-cn.srs", ruleSetBaseUrl).toString(),
           download_detour: "direct",
           update_interval: "1d"
+        },
+        {
+          type: "remote",
+          tag: "adblock-johnshall",
+          format: "binary",
+          url: new URL("adblock-johnshall.srs", ruleSetBaseUrl).toString(),
+          download_detour: "direct",
+          update_interval: "1d"
         }
       ]
     : [
@@ -557,6 +570,11 @@ function clientConfigForOutbounds(
           type: "inline",
           tag: "geoip-cn",
           rules: getBundledRoutingRules().geoip
+        },
+        {
+          type: "inline",
+          tag: "adblock-johnshall",
+          rules: [{ domain_suffix: getBundledAdblockDomains() }]
         }
       ];
   const customDnsRules = routePolicy.rules.flatMap((rule) => {
@@ -607,15 +625,25 @@ function clientConfigForOutbounds(
   // Keep the exact addresses already checked by earlier IP rules. Re-resolving
   // a TTL=0/rotating answer here could dial an IP that those rules would reject.
   const resolveRemaining = (match = {}) => resolvesCustomIps ? [] : [{ ...match, action: "resolve" }];
+  const managedAiRouteRules = [{
+    // Keep AI domains ahead of the upstream ad-block list in every mode. The
+    // reviewed list contains r.openai.com, so relying on the final route would
+    // reject a legitimate AI dependency in direct/global modes.
+    domain: [...AI_DOMAIN_NAMES],
+    domain_suffix: [...AI_DOMAIN_SUFFIXES],
+    ...(routePolicy.mode === "smart" && aiUnavailable
+      ? { action: "reject" }
+      : {
+          action: "route",
+          outbound: routePolicy.mode === "direct"
+            ? ROUTE_POLICY_GROUPS.direct.tag
+            : routePolicy.mode === "global-proxy"
+              ? ROUTE_POLICY_GROUPS.proxy.tag
+              : ROUTE_POLICY_GROUPS.ai.tag
+        })
+  }];
   const managedRouteRules = routePolicy.mode === "smart"
     ? [
-        // Keep AI domain destinations in the proxy request. The server can
-        // then consistently classify them and resolve via its chosen egress.
-        {
-          domain: [...AI_DOMAIN_NAMES],
-          domain_suffix: [...AI_DOMAIN_SUFFIXES],
-          ...(aiUnavailable ? { action: "reject" } : { action: "route", outbound: ROUTE_POLICY_GROUPS.ai.tag })
-        },
         ...resolveRemaining({ domain_suffix: [...PROXY_DOMAIN_SUFFIXES] }),
         {
           domain_suffix: [...PROXY_DOMAIN_SUFFIXES],
@@ -691,6 +719,13 @@ function clientConfigForOutbounds(
         },
         ...customDnsRules,
         ...(routePolicy.mode === "smart" ? [{
+          domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES], action: "route", server: "dns-domestic"
+        }, {
+          domain: [...APP_STORE_DOMAIN_NAMES],
+          domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
+          action: "route",
+          server: "dns-domestic"
+        }, {
           domain: [...AI_DOMAIN_NAMES],
           domain_suffix: [...AI_DOMAIN_SUFFIXES],
           ...(aiUnavailable ? { action: "reject" } : { action: "route", server: "dns-ai" })
@@ -717,6 +752,7 @@ function clientConfigForOutbounds(
         tag: "local-tun",
         address: ["172.19.0.1/30"],
         auto_route: true,
+        route_exclude_address: [...TAILNET_NETWORK_CIDRS],
         strict_route: true,
         stack: "system"
       },
@@ -789,6 +825,21 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
+        ...(routePolicy.mode === "smart" ? [
+          ...resolveRemaining({ domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES] }),
+          { domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES], action: "route", outbound: "direct" }
+        ] : []),
+        ...(routePolicy.mode === "smart" ? [
+          ...resolveRemaining({ domain: [...APP_STORE_DOMAIN_NAMES], domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES] }),
+          {
+            domain: [...APP_STORE_DOMAIN_NAMES],
+            domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
+            action: "route",
+            outbound: ROUTE_POLICY_GROUPS.direct.tag
+          }
+        ] : []),
+        ...managedAiRouteRules,
+        { rule_set: "adblock-johnshall", action: "reject" },
         ...managedRouteRules
       ],
       rule_set: ruleSets,

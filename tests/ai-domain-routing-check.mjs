@@ -95,7 +95,7 @@ try {
     .replace('log-level: "info"', 'log-level: "debug"')
     .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "redir-host"\n  listen: "127.0.0.1:${dnsPort}"`)
     .replaceAll("https://223.5.5.5/dns-query", dnsEndpoint("domestic"))
-    .replaceAll("https://223.6.6.6/dns-query", dnsEndpoint("domestic"))
+    .replaceAll("https://doh.pub/dns-query", dnsEndpoint("domestic"))
     .replaceAll('"223.5.5.5"', JSON.stringify(dnsEndpoint("domestic").replace("#DIRECT", "")))
     .replaceAll("https://1.1.1.1/dns-query#AI 代理", dnsEndpoint("ai"))
     .replaceAll("https://1.1.1.1/dns-query#普通代理", dnsEndpoint("remote"));

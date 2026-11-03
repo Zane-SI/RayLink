@@ -9,6 +9,18 @@ const tool = (name) => {
   return found;
 };
 
+test("MCP bounds node scopes and advanced JSON depth before business execution", () => {
+  const create = tool("users_create");
+  const args = { requestId: "bounded-user", name: "Test", email: "bounded@example.com", quotaGb: 100,
+    nodeScope: Array(1025).fill("all"), expiresAt: "2030-12-31" };
+  assert.equal(create.inputSchema.safeParse(args).success, false);
+  const update = tool("hosts_protocol_update");
+  let deep = { enabled: true };
+  for (let n = 0; n < 32; n++) deep = { nested: deep };
+  assert.equal(update.inputSchema.safeParse({ requestId: "bounded-options", hostId: "local", protocolType: "vless", options: deep }).success, false);
+  assert.equal(update.inputSchema.safeParse({ requestId: "valid-options", hostId: "local", protocolType: "vless", options: { multiplex: { enabled: true } } }).success, true);
+});
+
 test("MCP user creation validates explicit fields and keeps request identity out of the REST body", () => {
   const create = tool("users_create");
   const input = { requestId: "create-user-1", name: "Test User", email: "test@example.com", quotaGb: 100, nodeScope: ["all"], expiresAt: "2030-12-31" };

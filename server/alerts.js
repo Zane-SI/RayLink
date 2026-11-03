@@ -116,6 +116,14 @@ export function evaluateOperationalAlerts({
         resourceId: host.id,
         createdAt: telemetry.updatedAt || now.toISOString()
       }));
+    } else if (diskRatio >= 0.8) {
+      alerts.push(createAlert({
+        code: "HOST_DISK_WARNING", severity: "warning",
+        title: `${host.name} 磁盘空间预警`,
+        message: `磁盘使用率达到 ${Math.round(diskRatio * 100)}%，请检查日志、备份与旧版本的保留策略。`,
+        resourceType: "host", resourceId: host.id,
+        createdAt: telemetry.updatedAt || now.toISOString()
+      }));
     }
     if (["error", "stale"].includes(host.usageMetering?.status)) {
       alerts.push(createAlert({

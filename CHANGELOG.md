@@ -1,5 +1,16 @@
 # RayLink Changelog
 
+## Unreleased
+
+- Keep App Store catalog, images, downloads and Apple Account dependencies on
+  one direct path with matching DNS in smart subscriptions.
+- Embed the verified ad-block baseline in full Mihomo profiles, avoiding the
+  connection blackout while a remote provider initializes after a cold refresh.
+- Route Tailscale control services directly without forcing public `ts.net`
+  names to a private DNS resolver or replacing client-managed TUN settings.
+- Exercise cold startup with the production remote-rule source shape and an
+  unavailable download, in addition to existing warm and offline fixtures.
+
 ## 0.2.47 - 2026-10-08
 
 - Require explicit credential-read permissions in REST/MCP, redact Host protocol secrets from overview roles, and audit successful sensitive reads without storing credentials.

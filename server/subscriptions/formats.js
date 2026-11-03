@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import {
   AI_DOMAIN_NAMES,
   AI_DOMAIN_SUFFIXES,
+  APP_STORE_DOMAIN_NAMES,
+  APP_STORE_DOMAIN_SUFFIXES,
   CHINA_FALLBACK_DOMAIN_SUFFIXES,
   createRoutePolicyCandidates,
   LOCAL_DOMAIN_SUFFIXES,
@@ -9,15 +11,24 @@ import {
   PRIVATE_NETWORK_CIDRS,
   PROXY_DOMAIN_SUFFIXES,
   routeProbeUrlFromConfig,
-  ROUTE_POLICY_GROUPS
+  ROUTE_POLICY_GROUPS,
+  TAILSCALE_DOMAIN_SUFFIXES,
+  TAILSCALE_SHARED_DOMAIN_SUFFIXES
 } from "../routing/policy.js";
+import {
+  getBundledAdblockDomains,
+  getBundledAdblockVersion
+} from "../routing/adblock/bundled.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 import { getDomesticDnsFallbackCidrs } from "../routing/domestic-dns.js";
 
 const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
+const domesticMihomoDns = ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"];
 
 const bundledRulesVersion = JSON.parse(readFileSync(new URL("../routing/rule-sets/manifest.json", import.meta.url))).version;
 const bundledRulesComment = `# 智能分流内置规则版本: ${bundledRulesVersion}\n`
+  + `# 广告拦截规则版本: ${getBundledAdblockVersion()}（仅域名，已排除上游 IP 网段）\n`
+  + "# Ad-block source: https://github.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever — CC BY-SA 4.0\n"
   + "# 随 RayLink 应用发布更新；单独更新主控 SRS 清单不会刷新此内置基线。\n"
   + "# IP Geolocation by DB-IP: https://db-ip.com — CC BY 4.0: https://creativecommons.org/licenses/by/4.0/\n"
   + "# CN ranges selected and converted by RayLink; data is provided without warranties.\n"
@@ -45,6 +56,40 @@ function mihomoChinaProviders() {
     },
     "raylink-cn-ip": { type: "inline", behavior: "ipcidr", format: "yaml", payload: chinaIpCidrs }
   };
+}
+
+function adblockRuleSet(config) {
+  return config?.route?.rule_set?.find((entry) => entry.tag === "adblock-johnshall") || null;
+}
+
+function remoteAdblockUrl(config, filename) {
+  const source = adblockRuleSet(config);
+  return source?.type === "remote" && source.url
+    ? new URL(filename, source.url).toString()
+    : null;
+}
+
+function mihomoAdblockProvider(config) {
+  const source = adblockRuleSet(config);
+  if (!source) return null;
+  // Mihomo suspends ordinary connections while remote providers initialize.
+  // Ship the verified baseline so a cold refresh cannot block all networking
+  // on a rule download. Bundle updates arrive with the complete subscription.
+  return {
+    type: "inline",
+    behavior: "domain",
+    format: "yaml",
+    payload: getBundledAdblockDomains().map((domain) => `+.${domain}`)
+  };
+}
+
+function egernAdblockRules(config) {
+  if (!adblockRuleSet(config)) return [];
+  const url = remoteAdblockUrl(config, "adblock-johnshall-egern.yaml");
+  return url ? [{ rule_set: { name: "RayLink 广告拦截", match: url, policy: "REJECT" } }]
+    : getBundledAdblockDomains().map((domain) => ({
+        domain_suffix: { match: domain, policy: "REJECT" }
+      }));
 }
 
 function egernChinaDomains(targetField, target) {
@@ -218,7 +263,7 @@ function isIpv6Value(value) {
 }
 
 function dnsPolicyValue(dns, action) {
-  if (dns === "domestic") return ["https://223.5.5.5/dns-query"];
+  if (dns === "domestic") return [...domesticMihomoDns];
   if (dns === "system") return ["system"];
   return [`https://1.1.1.1/dns-query#${action === "ai" ? ROUTE_POLICY_GROUPS.ai.name : ROUTE_POLICY_GROUPS.proxy.name}`];
 }
@@ -249,6 +294,14 @@ function mihomoDnsPolicyRules(policy) {
     priorDomains.push(rule);
   }
   if (policy.mode === "smart") {
+    for (const rule of [
+      ...TAILSCALE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value })),
+      ...APP_STORE_DOMAIN_NAMES.map(value => ({ match: "domain", value })),
+      ...APP_STORE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value }))
+    ]) {
+      const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
+      if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue("domestic", "direct");
+    }
     for (const domain of AI_DOMAIN_NAMES) {
       const key = domain;
       if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("remote", "ai");
@@ -328,6 +381,10 @@ function applyMihomoTls(proxy, outbound) {
     proxy[serverNameField] = outbound.tls.server_name;
   }
   proxy["skip-cert-verify"] = false;
+  if (outbound.tls.alpn?.length) proxy.alpn = [...outbound.tls.alpn];
+  if (outbound.tls.utls?.enabled && outbound.tls.utls.fingerprint) {
+    proxy["client-fingerprint"] = outbound.tls.utls.fingerprint;
+  }
   if (outbound.tls.reality?.enabled) {
     proxy["reality-opts"] = {
       "public-key": outbound.tls.reality.public_key,
@@ -662,6 +719,16 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
   }) : proxyGroups;
   const pinnedEndpoints = normalizedEndpointOverrides(endpointOverrides);
   const pinnedHostnames = Object.keys(pinnedEndpoints);
+  const adblockProvider = mihomoAdblockProvider(singBoxConfig);
+  const ruleProviders = {
+    ...(routePolicy.mode === "smart" ? mihomoChinaProviders() : {}),
+    ...(adblockProvider ? { "raylink-adblock": adblockProvider } : {})
+  };
+  const aiPolicy = routePolicy.mode === "direct"
+    ? "DIRECT"
+    : routePolicy.mode === "global-proxy"
+      ? ROUTE_POLICY_GROUPS.proxy.name
+      : ROUTE_POLICY_GROUPS.ai.name;
   return {
     "mixed-port": 7890,
     "allow-lan": false,
@@ -682,14 +749,19 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       "enhanced-mode": "fake-ip",
       "fake-ip-range": "198.18.0.1/16",
       "fake-ip-filter": [...new Set([
-        ...pinnedHostnames, "localhost", ...LOCAL_DOMAIN_SUFFIXES.map((suffix) => `+.${suffix}`)
+        ...pinnedHostnames, "localhost", ...LOCAL_DOMAIN_SUFFIXES.map((suffix) => `+.${suffix}`),
+        ...(routePolicy.mode === "smart" ? [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILSCALE_SHARED_DOMAIN_SUFFIXES].map((suffix) => `+.${suffix}`) : [])
       ])],
       "respect-rules": true,
-      "default-nameserver": ["223.5.5.5"],
+      "default-nameserver": ["223.5.5.5", "119.29.29.29"],
       nameserver: routePolicy.mode !== "global-proxy"
-        ? ["https://223.5.5.5/dns-query", ...(routePolicy.mode === "smart" ? ["https://223.6.6.6/dns-query"] : [])]
+        ? routePolicy.mode === "smart" ? [...domesticMihomoDns] : [domesticMihomoDns[0]]
         : [`https://1.1.1.1/dns-query#${ROUTE_POLICY_GROUPS.proxy.name}`],
       ...(routePolicy.mode === "smart" ? {
+        // Newer cores otherwise race the foreign fallback even for a healthy
+        // domestic answer. Older cores ignore this field and retain their
+        // existing sequential behavior.
+        "fallback-lazy-query": true,
         // Unknown domestic services need a nearby CDN answer before IP routing.
         // Reject every non-CN candidate; explicit DNS policies still take priority.
         fallback: [`https://1.1.1.1/dns-query#${ROUTE_POLICY_GROUPS.proxy.name}`],
@@ -698,17 +770,15 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       "nameserver-policy": {
         ...mihomoDnsPolicyRules(routePolicy),
         ...(routePolicy.mode === "smart"
-          ? { "rule-set:raylink-cn-domain": ["https://223.5.5.5/dns-query"] }
+          ? { "rule-set:raylink-cn-domain": [...domesticMihomoDns] }
           : {})
       },
-      "proxy-server-nameserver": [
-        "https://223.5.5.5/dns-query"
-      ],
+      "proxy-server-nameserver": [...domesticMihomoDns],
       ...(pinnedHostnames.length ? {
         "proxy-server-nameserver-policy": Object.fromEntries(
           pinnedHostnames.map((hostname) => [
             hostname,
-            ["https://223.5.5.5/dns-query"]
+            [...domesticMihomoDns]
           ])
         )
       } : {})
@@ -733,21 +803,23 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     // objects and URL. Only the provider schedules background checks; groups
     // retain selection and failure-triggered recovery with the same budget.
     "proxy-groups": sharedGroups,
-    ...(routePolicy.mode === "smart" ? { "rule-providers": mihomoChinaProviders() } : {}),
+    ...(Object.keys(ruleProviders).length ? { "rule-providers": ruleProviders } : {}),
     rules: [
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
+      ...(routePolicy.mode === "smart" ? [
+        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
+        ...APP_STORE_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},DIRECT`),
+        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`)
+      ] : []),
+      ...AI_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},${aiPolicy}`),
+      ...AI_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},${aiPolicy}`),
+      ...(adblockProvider ? ["RULE-SET,raylink-adblock,REJECT"] : []),
       ...(routePolicy.mode === "direct"
         ? [...mihomoPrivateIpRules({ resolveDomains: true }), "MATCH,DIRECT"]
         : routePolicy.mode === "global-proxy"
           ? [...mihomoPrivateIpRules({ resolveDomains: true }), `MATCH,${ROUTE_POLICY_GROUPS.proxy.name}`]
           : [
-              ...AI_DOMAIN_NAMES.map(
-                (domain) => `DOMAIN,${domain},${ROUTE_POLICY_GROUPS.ai.name}`
-              ),
-              ...AI_DOMAIN_SUFFIXES.map(
-                (domain) => `DOMAIN-SUFFIX,${domain},${ROUTE_POLICY_GROUPS.ai.name}`
-              ),
               ...PROXY_DOMAIN_SUFFIXES.map(
                 (domain) => `DOMAIN-SUFFIX,${domain},${ROUTE_POLICY_GROUPS.proxy.name}`
               ),
@@ -921,6 +993,11 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
     rule.enabled && ["domain", "domain_suffix"].includes(rule.match)
     && rule.action === "ai" && rule.dns === "remote"
   ));
+  const aiPolicy = routePolicy.mode === "direct"
+    ? "DIRECT"
+    : routePolicy.mode === "global-proxy"
+      ? ROUTE_POLICY_GROUPS.proxy.name
+      : ROUTE_POLICY_GROUPS.ai.name;
   return {
     ipv6: false,
     close_connections_on_policy_change: false,
@@ -965,6 +1042,15 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
+        ...(routePolicy.mode === "smart" ? TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({
+          domain_suffix: { match: domain, value: "domestic" }
+        })) : []),
+        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_NAMES.map((domain) => ({
+          domain: { match: domain, value: "domestic" }
+        })) : []),
+        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({
+          domain_suffix: { match: domain, value: "domestic" }
+        })) : []),
         ...(routePolicy.mode === "smart" ? AI_DOMAIN_NAMES.map((domain) => ({
           domain: { match: domain, value: "ai" }
         })) : []),
@@ -1095,19 +1181,25 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
     rules: [
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
+      ...(routePolicy.mode === "smart" ? [
+        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } })),
+        ...APP_STORE_DOMAIN_NAMES.map((domain) => ({ domain: { match: domain, policy: "DIRECT" } })),
+        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } }))
+      ] : []),
       // Default DNS connections follow the AI exit unless explicitly overridden.
       ...(usesAiDns ? [{ ip_cidr: { match: "9.9.9.9/32", policy: ROUTE_POLICY_GROUPS.ai.name, no_resolve: true } }] : []),
+      ...AI_DOMAIN_NAMES.map((domain) => ({
+        domain: { match: domain, policy: aiPolicy }
+      })),
+      ...AI_DOMAIN_SUFFIXES.map((domain) => ({
+        domain_suffix: { match: domain, policy: aiPolicy }
+      })),
+      ...egernAdblockRules(singBoxConfig),
       ...(routePolicy.mode === "direct"
         ? [...egernPrivateIpRules({ resolveDomains: true }), { default: { policy: "DIRECT" } }]
         : routePolicy.mode === "global-proxy"
           ? [...egernPrivateIpRules({ resolveDomains: true }), { default: { policy: ROUTE_POLICY_GROUPS.proxy.name } }]
           : [
-              ...AI_DOMAIN_NAMES.map((domain) => ({
-                domain: { match: domain, policy: ROUTE_POLICY_GROUPS.ai.name }
-              })),
-              ...AI_DOMAIN_SUFFIXES.map((domain) => ({
-                domain_suffix: { match: domain, policy: ROUTE_POLICY_GROUPS.ai.name }
-              })),
               ...PROXY_DOMAIN_SUFFIXES.map((domain) => ({
                 domain_suffix: { match: domain, policy: ROUTE_POLICY_GROUPS.proxy.name }
               })),

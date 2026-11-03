@@ -14,6 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { buildSingBoxConfig } from "../server/singbox/config.js";
 import { buildProtocolClientConfig, defaultProtocolConfigs } from "../server/singbox/protocol-catalog.js";
+import { createFixturePortAllocator } from "./helpers/fixture-port.js";
 const run = (binary, args, options = {}) => promisify(execFile)(binary, args, { timeout: 10000, ...options });
 const binary = process.env.SING_BOX_BIN || "sing-box";
 const customDomains = process.argv.includes("--custom-domains");
@@ -30,13 +31,14 @@ const aiDomains = ["claude.ai", "api.openai.com", "gemini.google.com", ...(custo
 const directory = await mkdtemp(join(tmpdir(), "raylink-ai-upstream-"));
 const allSockets = new Set(), servers = new Set(), children = new Set(), udpSockets = new Set();
 const credential = { email: "egress-fixture@example.invalid", runtimeUuid: "3365c019-4b70-4dd5-9b3a-48d83a22f24d", runtimePassword: "native-fixture-password" };
-const ordinaryDomains = ["www.google.com", "google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com", "ordinary.fixture.invalid", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "setup.workos.com", "images.workoscdn.com", "workos.imgix.net", ...(customDomains ? ["ordinary.assistant.invalid", "ordinary.claude.ai", "disabled.invalid", "www.instagram.com", "x.com"] : [])];
+const regionalDomains = [];
+const ordinaryDomains = ["google.com", "www.google.com", "news.google.com", "accounts.google.com", "mail.google.com", "gmail.com", "youtube.com", "www.youtube.com", "ordinary.fixture.invalid", "challenges.cloudflare.com", "hagen.challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com", "setup.workos.com", "images.workoscdn.com", "workos.imgix.net", ...(customDomains ? ["ordinary.assistant.invalid", "ordinary.claude.ai", "disabled.invalid", "www.instagram.com", "x.com"] : [])];
 async function listen(server) {
   servers.add(server);
   server.on("connection", socket => { allSockets.add(socket); socket.on("error", () => {}); socket.on("close", () => allSockets.delete(socket)); });
   server.listen(0, "127.0.0.1"); await once(server, "listening"); return server.address().port;
 }
-async function unusedPort() { const server = tcpServer(); server.listen(0, "127.0.0.1"); await once(server, "listening"); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
+const unusedPort = createFixturePortAllocator();
 async function stop(runtime) {
   if (runtime?.child.exitCode === null && runtime.child.signalCode === null) { const exited = once(runtime.child, "exit"); runtime.child.kill("SIGTERM"); const timer = setTimeout(() => runtime.child.kill("SIGKILL"), 2000); await exited; clearTimeout(timer); }
 }
@@ -47,7 +49,7 @@ async function launch(config, name) {
   const runtime = { child, log: "" }; children.add(runtime);
   child.stdout.on("data", data => { runtime.log = (runtime.log + data).slice(-12000); }); child.stderr.on("data", data => { runtime.log = (runtime.log + data).slice(-12000); });
   for (let i = 0; i < 100 && !runtime.log.includes("sing-box started") && child.exitCode === null; i++) await delay(50);
-  assert.ok(runtime.log.includes("sing-box started"), "fixture Runtime failed to start"); return runtime;
+  assert.ok(runtime.log.includes("sing-box started"), `fixture Runtime ${name} failed to start (exit ${child.exitCode}): ${runtime.log}`); return runtime;
 }
 function forward(state, socket, host, port, head, response) {
   state.destinations.push({ host, port });
@@ -138,7 +140,7 @@ try {
       aiUpstream: { enabled: true, hostId: "local", type, server: "upstream.fixture.invalid", port: proxyPort, username: "fixture", password: "fixture-secret", tlsServerName: "upstream.fixture.invalid", revision: 1 } });
     const productionPath = join(directory, type + "-production.json"); await writeFile(productionPath, JSON.stringify(config), { mode: 0o600 });
     await run(binary, ["check", "-c", productionPath]);
-    const domains = [...aiDomains, "upstream.fixture.invalid", ...ordinaryDomains];
+    const domains = [...aiDomains, ...regionalDomains, "upstream.fixture.invalid", ...ordinaryDomains];
     // Only environment fixtures change: DNS answers and bind addresses. Native
     // server routing/outbounds and each public protocol's user identity stay intact.
     config.dns.servers = config.dns.servers.map(({ tag }) => ({ type: "hosts", tag, predefined: Object.fromEntries(domains.map(domain => [domain, ["127.0.0.1"]])) }));
@@ -150,7 +152,7 @@ try {
       ...(numeric ? ["--resolve", `${domain}:${state.tlsTargetPort}:127.0.0.1`] : []), `${tls ? "https" : "http"}://${domain}:${tls ? state.tlsTargetPort : targetPort}/`], { timeout: 7000 })).stdout;
     if (type === "https") {
       const directBefore = state.direct; await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBefore, "untrusted HTTPS proxy must not fall back direct");
-      assert.equal(await request("www.google.com"), "DIRECT"); await stop(runtime);
+      assert.equal(await request("google.com"), "DIRECT"); await stop(runtime);
       config.outbounds.find(item => item.tag === "ai-residential").tls.certificate_path = certificatePath;
       runtime = await launch(config, type + "-trusted");
     }
@@ -192,16 +194,17 @@ try {
         assert.ok(state.destinations.slice(beforeClient).some(value => value.host === "api.assistant.invalid"), "custom AI name must reach the residential proxy unchanged");
         assert.equal(await request("ordinary.assistant.invalid", clientPort), "DIRECT", "custom exception must retain ordinary egress through the real protocol");
       }
-      assert.equal(await request("www.google.com", clientPort), "DIRECT");
+      assert.equal(await request("www.google.com", clientPort), "DIRECT", `${profile.type}: ordinary Google must not use the residential upstream`);
       await stop(client);
     }
     const directBeforeFailure = state.direct; state.healthy = false;
     await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBeforeFailure, "upstream failure must never retry AI directly");
-    assert.equal(await request("www.google.com"), "DIRECT", "ordinary browsing survives residential failure");
+    assert.equal(await request("www.google.com"), "DIRECT", "ordinary Google survives residential failure");
+    assert.equal(await request("google.com"), "DIRECT", "other ordinary Google browsing survives residential failure");
     state.healthy = true; state.authAllowed = false; const directBeforeAuth = state.direct;
     await assert.rejects(() => request("claude.ai")); assert.equal(state.direct, directBeforeAuth, "upstream authentication failure must not fall back direct");
     await stop(runtime);
-    console.log(JSON.stringify({ core: version, customDomains, upstream: type, aiResidential: true, originalDomainPreserved: true, googleAndOrdinaryDirect: true,
+    console.log(JSON.stringify({ core: version, customDomains, upstream: type, aiResidential: true, originalDomainPreserved: true, googleResidential: false, googleAndOrdinaryDirect: true,
       sharedIdentityAndChallengeDirect: true, visibleAiSniRecognized: true, aiUdpRejected: true, ordinaryUdpDirect: true,
       tcpViaRealInboundProtocols: profiles.map(item => item.type), upstreamFailureClosed: true, authenticationFailureClosed: true,
       generatedClientDomainPreservation: true,

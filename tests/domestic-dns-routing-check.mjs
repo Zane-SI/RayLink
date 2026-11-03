@@ -249,10 +249,11 @@ try {
       // the candidate IP stays public CN/foreign for the unchanged matcher.
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
-      .replaceAll("https://223.6.6.6/dns-query", secondary.endpoint)
+      .replaceAll("https://doh.pub/dns-query", secondary.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#AI 代理", ai.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
+      .replaceAll('"119.29.29.29"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
       .replaceAll('"system"', JSON.stringify(domestic.endpoint));
     const transports = proxies.map(({ name, port }) => ({ name, type: "http", server: "127.0.0.1", port }));
     if (format === "mihomo") {

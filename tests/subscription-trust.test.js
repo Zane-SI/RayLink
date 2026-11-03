@@ -71,12 +71,13 @@ test("self-signed IP setup exports complete subscriptions without remote rule-se
   const response = await request(`${subscriptionPath}?format=singbox`);
   const config = await response.json();
   assert.equal(response.status, 200, JSON.stringify(config));
-  assert.equal(config.route.rule_set.length, 2);
+  assert.equal(config.route.rule_set.length, 3);
   assert.ok(config.route.rule_set.every((rule) => rule.type === "inline" && rule.rules.length > 0),
     "a new client must not fetch rules from an untrusted self-signed HTTPS endpoint");
   const rules = JSON.stringify(config.route.rule_set);
   assert.match(rules, /a1\.mzstatic\.com/);
   assert.match(rules, /1\.0\.1\.0\/24/);
+  assert.match(rules, /adservice\.google\.com/);
   assert.doesNotMatch(JSON.stringify(config), /"insecure":true/);
 
   for (const format of ["mihomo", "egern-profile", "egern", "loon"]) {

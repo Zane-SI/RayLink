@@ -145,7 +145,7 @@ try {
   if (residential) {
     primary.mode = "servfail";
     secondary.mode = "answer";
-    for (const domain of ["test.custom.runtime-dns.invalid", "direct.runtime-dns.invalid", "www.google.com"]) {
+    for (const domain of ["test.custom.runtime-dns.invalid", "direct.runtime-dns.invalid", "google.com", "www.google.com"]) {
       await request(socksPort, domain);
       assert.ok(primary.queries.includes(domain), `${domain}: ordinary traffic must use trusted DNS`);
       assert.ok(secondary.queries.includes(domain), `${domain}: residential shortcuts must retain DNS failover`);
@@ -154,7 +154,7 @@ try {
     await assert.rejects(() => request(socksPort, "blocked.runtime-dns.invalid"));
     await assert.rejects(() => request(socksPort, "api.openai.com"));
     assert.equal(upstreams.reduce((total, item) => total + item.queries.length, 0), queryCount,
-      "blocked requests need no DNS; AI target domains must stay intact for upstream DNS");
+      "blocked requests need no DNS; AI domains must stay intact for upstream DNS");
   }
   await request(socksPort, "127.0.0.1");
   process.stdout.write(`${JSON.stringify({ runtime: version, trustedLookup: true, cacheMs, timeoutFallbackMs: fallbackMs,

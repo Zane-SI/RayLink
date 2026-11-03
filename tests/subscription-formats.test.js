@@ -53,10 +53,33 @@ test("Mihomo HTTPUpgrade exports use the supported WebSocket upgrade mode and re
   }
 });
 
+test("Mihomo certificate TLS exports retain explicit ALPN and enabled client fingerprints", () => {
+  for (const format of ["mihomo", "mihomo-modern"]) {
+    for (const type of ["vmess", "vless", "trojan"]) {
+      for (const enabled of [false, true]) {
+        const outbound = {
+          type, tag: "tls-fixture", server: "cdn.example", server_port: 443,
+          uuid: "3365c019-4b70-4dd5-9b3a-48d83a22f24d", password: "fixture",
+          tls: { enabled: true, server_name: "cdn.example", alpn: ["http/1.1"], utls: { enabled, fingerprint: "chrome" } },
+          transport: { type: "ws", path: "/fixture", headers: { Host: "cdn.example" } }
+        };
+        const original = structuredClone(outbound);
+        const { body } = buildSubscriptionArtifact({ format, singBoxConfig: { outbounds: [outbound] } });
+        assert.match(body, /alpn:\n\s+- "http\/1.1"/);
+        assert.equal(body.includes('client-fingerprint: "chrome"'), enabled);
+        assert.match(body, /skip-cert-verify: false/);
+        assert.match(body, /network: "ws"/);
+        assert.deepEqual(outbound, original, "Export must not mutate the shared configuration");
+      }
+    }
+  }
+});
+
 test("smart Mihomo subscriptions validate domestic DNS candidates without changing explicit modes", () => {
   for (const format of ["mihomo", "mihomo-modern"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
-    assert.match(body, /\n  nameserver:\n    - "https:\/\/223\.5\.5\.5\/dns-query"\n    - "https:\/\/223\.6\.6\.6\/dns-query"\n/);
+    assert.match(body, /\n  nameserver:\n    - "https:\/\/223\.5\.5\.5\/dns-query"\n    - "https:\/\/doh\.pub\/dns-query"\n/);
+    assert.match(body, /\n  fallback-lazy-query: true\n/);
     assert.match(body, /\n  fallback:\n    - "https:\/\/1\.1\.1\.1\/dns-query#普通代理"\n/);
     assert.match(body, /\n  fallback-filter:\n    geoip: false\n    ipcidr:/);
     assert.match(body, /\n      - "::\/0"\n/);
@@ -290,7 +313,7 @@ test("Mihomo preserves endpoint pins while excluding local discovery names from 
       const filter = body.split("  fake-ip-filter:\n")[1]?.split("  respect-rules:")[0];
       assert.ok(filter, `${format} must exclude local discovery names even without endpoint pins`);
       const names = [...filter.matchAll(/- "([^"]+)"/g)].map((match) => match[1]);
-      assert.deepEqual(names, [...Object.keys(endpointOverrides), "localhost", "+.local", "+.lan", "+.home.arpa"]);
+      assert.deepEqual(names, [...Object.keys(endpointOverrides), "localhost", "+.local", "+.lan", "+.home.arpa", "+.tailscale.com", "+.ts.net"]);
       assert.equal(new Set(names).size, names.length);
     }
   }

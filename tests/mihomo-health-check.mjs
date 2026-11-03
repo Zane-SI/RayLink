@@ -127,7 +127,16 @@ try {
     const result = await fetch(base + "/configs?force=true", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path }) });
     assert.equal(result.status, 204, clean(await result.text()));
   }
-  async function proxies() { return (await (await fetch(base + "/proxies")).json()).proxies; }
+  async function proxies() {
+    const responses = await Promise.all(["/proxies", "/providers/proxies"].map((path) => fetch(base + path)));
+    for (const response of responses) assert.equal(response.status, 200);
+    const [groups, providers] = await Promise.all(responses.map((response) => response.json()));
+    const nodes = Object.values(providers.providers || {}).flatMap((provider) => provider.proxies || []);
+    // Provider-backed nodes moved out of /proxies in newer Mihomo releases.
+    // Group selection still comes from /proxies, real payload/failover checks
+    // below remain the final success criteria.
+    return { ...Object.fromEntries(nodes.map((node) => [node.name, node])), ...groups.proxies };
+  }
   async function select(name) {
     const node = names.includes(name);
     const result = await fetch(base + "/proxies/GLOBAL", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: node ? "手动选择" : name }) });

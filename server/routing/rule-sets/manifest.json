@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "version": "cn-a9958574-dbip-202610-097426b8",
-  "publishedAt": "2026-10-06T00:00:00Z",
-  "description": "Pinned SagerNet geolocation-cn domains with DB-IP Country Lite October 2026 geographical CN addresses; packaging date is not source freshness.",
+  "version": "cn-a9958574-dbip-202611-e5c8459d",
+  "publishedAt": "2026-11-03T00:00:00Z",
+  "description": "Pinned SagerNet geolocation-cn domains with DB-IP Country Lite November 2026 geographical CN addresses; packaging date is not source freshness.",
   "rules": [
     {
       "filename": "geosite-geolocation-cn.srs",
@@ -20,26 +20,26 @@
     {
       "filename": "geoip-cn.srs",
       "delivery": "bundled",
-      "sha256": "474a9ead467a995699fccc4e7568b4e3c8cca5dc63eb3d03317a41a4a17a8a39",
-      "bytes": 56795,
+      "sha256": "1bbf0ab34de54a1800fc388d165199e16d54b4ca47d1a846020c4f19084f1fbe",
+      "bytes": 56489,
       "jsonFilename": "geoip-cn.json",
-      "jsonSha256": "a325e1fa3d86489bd210ee9783c89ffce7d5a05897574ae693461b7346a9d779",
+      "jsonSha256": "305c821496cf28074fbea72c8dedd4f385c076d88277f76081e8735c32e1ecf1",
       "statistics": {
-        "ip_cidr": 15365
+        "ip_cidr": 15189
       },
       "source": {
         "format": "dbip-country-lite-csv-gzip",
         "provider": "DB-IP",
         "edition": "IP to Country Lite",
-        "release": "2026-10",
-        "publishedAt": "2026-10-01T00:00:00Z",
-        "url": "https://download.db-ip.com/free/dbip-country-lite-2026-10.csv.gz",
-        "sha256": "097426b8ddae89157d444a59ac1847e873f7943c32d52becc4371c8b0273af80",
-        "bytes": 4491785,
-        "uncompressedSha256": "53864a68fbfef02c27c717d08d431a6d453e9e00e77d9e8da841d382267fca88",
-        "uncompressedBytes": 31210433,
-        "upstreamSha1": "c8ad1dfe98cb29bcacd82a5c3ec361c880e5bb59",
-        "records": 710834,
+        "release": "2026-11",
+        "publishedAt": "2026-11-01T00:00:00Z",
+        "url": "https://download.db-ip.com/free/dbip-country-lite-2026-11.csv.gz",
+        "sha256": "e5c8459d638a272ece7f4d7cfa49dce18d91b4f403f6940ba9249bf0db3781fd",
+        "bytes": 4623153,
+        "uncompressedSha256": "5e968a64a29b973f794c5abc46d0711a0ba87c8a16c411e1cd70312db7a5d4e1",
+        "uncompressedBytes": 32485911,
+        "upstreamSha1": "e2061015c43ec91c94a12191a6a613279eb94c0c",
+        "records": 732796,
         "selection": "country=CN",
         "semantics": "IP geolocation country; never ISP registration or ASN ownership",
         "documentationUrl": "https://db-ip.com/db/format/ip-to-country-lite/csv.html",

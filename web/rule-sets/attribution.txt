@@ -28,6 +28,18 @@ https://www.gnu.org/licenses/gpl-3.0.html
 Source, exact upstream revision and retained notices:
 https://github.com/Zane-SI/RayLink/tree/main/server/routing/rule-sets
 
+Advertising domain data: Shadowrocket-ADBlock-Rules-Forever by Johnshall
+https://github.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever
+License: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+
+RayLink uses a reviewed, checksum-pinned snapshot of sr_ad_only.conf and
+converts only its DOMAIN-SUFFIX entries to native sing-box, Mihomo and Egern
+rule-set formats. The upstream IP-CIDR rules are excluded to reduce false
+positives on shared addresses and CDN traffic. Exact source commit, hashes,
+counts and build instructions are retained at:
+https://github.com/Zane-SI/RayLink/tree/main/server/routing/adblock
+
 These data are provided without warranties, including accuracy or fitness
 for a particular purpose. Geolocation and domain classifications can be
 incomplete or incorrect and do not guarantee connectivity. The full license

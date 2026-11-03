@@ -66,6 +66,18 @@ async function connect(t, f, scopes, existing) {
 }
 const output = (result) => result.structuredContent || JSON.parse(result.content[0].text);
 
+test("authenticated MCP calls reject excessive input elements before dispatch", async (t) => {
+  const f = await fixture(t);
+  const { client } = await connect(t, f, ["runtime.manage"]);
+  const result = await client.callTool({ name: "hosts_protocol_update", arguments: {
+    requestId: "excessive-elements", hostId: "local", protocolType: "vless",
+    options: { fixture: Array(10_001).fill(0) }
+  } });
+  assert.equal(result.isError, true);
+  assert.match(JSON.stringify(result), /maximum of 10000 elements/);
+  assert.ok((await client.listTools()).tools.length > 0, "The server remains usable after rejecting input");
+});
+
 test("AI diagnostics are scoped read-only MCP operations with explicit server-side evidence", async (t) => {
   const f = await fixture(t, { aiDiagnosticProbe: {
     resolve: async () => [{ address: "1.1.1.1", family: 4 }],

@@ -156,7 +156,7 @@ async function check(core, scenario) {
         .replace(/^\s+(?:uuid|password|udp|tls|sni|servername|skip-cert-verify):.*\n/gm, "")
         .replace(/interval: (?:60|180)/g, "interval: 1")
         .replaceAll("https://223.5.5.5/dns-query", `${dnsEndpoint}#DIRECT`)
-        .replaceAll("https://223.6.6.6/dns-query", `${dnsEndpoint}#DIRECT`)
+        .replaceAll("https://doh.pub/dns-query", `${dnsEndpoint}#DIRECT`)
         .replaceAll('"223.5.5.5"', JSON.stringify(dnsEndpoint))
         .replaceAll("https://1.1.1.1/dns-query#AI 代理", `${dnsEndpoint}#DIRECT`)
         .replaceAll("https://1.1.1.1/dns-query#普通代理", `${dnsEndpoint}#DIRECT`);

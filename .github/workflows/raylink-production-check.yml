@@ -42,6 +42,7 @@ jobs:
           retention-days: 1
 
   production-check:
+    name: Production tests (Node ${{ matrix.node-version }}, Mihomo ${{ matrix.mihomo-version }})
     needs: runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -49,6 +50,7 @@ jobs:
       fail-fast: false
       matrix:
         node-version: ["22", "24"]
+        mihomo-version: ["1.19.25", "1.19.32"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -74,7 +76,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Prepare pinned Mihomo interoperability client
-        run: bash tests/download-mihomo-ci.sh "${RUNNER_TEMP}/raylink-mihomo"
+        run: bash tests/download-mihomo-ci.sh "${RUNNER_TEMP}/raylink-mihomo" "${{ matrix.mihomo-version }}"
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Syntax, API, protocol and memory checks
         run: |
           SING_BOX_BIN="${RUNNER_TEMP}/raylink-protocol-runtime/raylink-sing-box-1.14.2-linux-amd64" \
@@ -102,3 +106,16 @@ jobs:
           package="${RUNNER_TEMP}/raylink-${version}-linux-amd64.tar.gz"
           bash deploy/package-release.sh "$version" "$package"
           sudo env RAYLINK_DISPOSABLE_SYSTEM=1 bash tests/linux-install-smoke.sh "$package" "$version"
+
+  required-checks:
+    name: RayLink CI
+    if: ${{ always() }}
+    needs: [runtime, production-check, installation-check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require all acceptance jobs to succeed
+        env:
+          RAYLINK_REQUIRED_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: node .github/scripts/check-required-jobs.mjs

@@ -2,7 +2,7 @@ import { domainToASCII } from "node:url";
 import { isIP } from "node:net";
 import { AI_DOMAIN_NAMES, AI_DOMAIN_SUFFIXES, normalizeRoutingPolicy } from "./policy.js";
 
-export const AI_DOMAIN_RULES_VERSION = "2026-10-04.1";
+export const AI_DOMAIN_RULES_VERSION = "2026-10-18.2";
 
 // Client routing also covers shared login/challenge dependencies. Residential
 // egress is narrower: those shared providers serve ordinary websites as well,
@@ -11,7 +11,12 @@ const sharedDomains = new Set([
   "challenges.cloudflare.com", "cdn.workos.com", "forwarder.workos.com",
   "setup.workos.com", "images.workoscdn.com", "workos.imgix.net"
 ]);
+// Kept in the public view for backward compatibility. Regional correction
+// requires a separately configured non-residential exit; never borrow the AI
+// residential upstream for ordinary Google browsing.
+export const REGIONAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([]);
 export const AI_UPSTREAM_DOMAIN_NAMES = Object.freeze(AI_DOMAIN_NAMES.filter(domain => !sharedDomains.has(domain)));
+export const RESIDENTIAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([...AI_UPSTREAM_DOMAIN_NAMES]);
 export const AI_UPSTREAM_DOMAIN_SUFFIXES = Object.freeze(AI_DOMAIN_SUFFIXES.filter(domain => !sharedDomains.has(domain)));
 const protectedDomains = Object.freeze([
   "google.com", "google.co.uk", "google.co.jp", "google.com.hk", "google.com.tw", "google.com.sg", "google.com.au", "google.de", "google.fr", "google.ca",
@@ -24,7 +29,7 @@ const protectedDomains = Object.freeze([
 ]);
 
 function builtinMatch() {
-  return { domain: [...AI_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES] };
+  return { domain: [...RESIDENTIAL_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES] };
 }
 
 function sharedCustomAiMatch(rule) {
@@ -34,7 +39,7 @@ function sharedCustomAiMatch(rule) {
   ] };
 }
 
-export function compileAiUpstreamRules(policy = {}, { resolveRule } = {}) {
+export function compileResidentialUpstreamRules(policy = {}, { resolveRule } = {}) {
   const rules = normalizeRoutingPolicy(policy).rules.filter(rule => rule.enabled && ["domain", "domain_suffix"].includes(rule.match));
   const compiled = [
     ...rules.flatMap(rule => rule.action === "ai" && !isIP(rule.value) ? [
@@ -44,8 +49,8 @@ export function compileAiUpstreamRules(policy = {}, { resolveRule } = {}) {
       { [rule.match]: [rule.value], network: "udp", action: "reject" },
       { [rule.match]: [rule.value], network: "tcp", action: "route", outbound: "ai-residential" }
     ] : [{ [rule.match]: [rule.value], action: rule.action === "block" ? "reject" : "route", ...(rule.action === "block" ? {} : { outbound: "direct" }) }]),
-    { domain: [...AI_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES], network: "udp", action: "reject" },
-    { domain: [...AI_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES], network: "tcp", action: "route", outbound: "ai-residential" }
+    { domain: [...RESIDENTIAL_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES], network: "udp", action: "reject" },
+    { domain: [...RESIDENTIAL_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES], network: "tcp", action: "route", outbound: "ai-residential" }
   ];
   // Ordinary exceptions and shared-provider guards terminate before the
   // general Runtime resolver. Preserve its DNS rules/fallback on those paths;
@@ -67,7 +72,7 @@ function normalizedDomain(value) {
 
 const matchesSuffix = (domain, suffix) => domain === suffix || domain.endsWith(`.${suffix}`);
 
-export function describeAiDomain(value, policy = {}) {
+export function describeResidentialUpstreamDomain(value, policy = {}) {
   const domain = normalizedDomain(value);
   const result = { eligible: false, source: "none", match: null, value: null, ruleId: null,
     reason: "未命中 AI 专用域名；IP/CIDR 规则仅控制客户端入口，不扩大住宅域名范围。" };
@@ -95,11 +100,16 @@ export function describeAiDomain(value, policy = {}) {
 }
 
 export function isAiUpstreamDomain(value, policy = {}) {
-  return describeAiDomain(value, policy).eligible;
+  const description = describeResidentialUpstreamDomain(value, policy);
+  return description.eligible;
+}
+
+export function isResidentialUpstreamDomain(value, policy = {}) {
+  return describeResidentialUpstreamDomain(value, policy).eligible;
 }
 
 export function aiDomainRulesView(policy = {}) {
   return { version: AI_DOMAIN_RULES_VERSION, domainNames: [...AI_DOMAIN_NAMES], domainSuffixes: [...AI_DOMAIN_SUFFIXES],
-    sharedDomains: [...sharedDomains], protectedDomains: [...protectedDomains],
+    regionalDomains: [...REGIONAL_UPSTREAM_DOMAIN_NAMES], sharedDomains: [...sharedDomains], protectedDomains: [...protectedDomains],
     customRules: normalizeRoutingPolicy(policy).rules.filter(rule => ["domain", "domain_suffix"].includes(rule.match)) };
 }

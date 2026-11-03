@@ -2,7 +2,7 @@
 
 Source: [DB-IP Country Lite October 2026](https://db-ip.com/db/download/ip-to-country-lite), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). IP Geolocation by [DB-IP](https://db-ip.com).
 
-The former source selected ISP registration country. This replacement selects the geographical country field and normalizes exactly those CN ranges. The domain baseline is unchanged. The full machine-readable coverage delta is `country-review.json`; it identifies the old JSON SHA-256 `9c5ade468337a9589e55c61fac536d52f951eff4b7eae291ff2af655fcba5161`.
+This is the historical October source-migration review. The former source selected ISP registration country. That replacement selected the geographical country field and normalized exactly those CN ranges. The domain baseline was unchanged. The original machine-readable delta is available with `git show 230470f:server/routing/rule-sets/country-review.json`; it identifies the old JSON SHA-256 `9c5ade468337a9589e55c61fac536d52f951eff4b7eae291ff2af655fcba5161`. The current `country-review.json` and `COUNTRY-REVIEW-2026-11.md` instead describe the subsequent October-to-November update.
 
 | Coverage | Old | New |
 | --- | ---: | ---: |
