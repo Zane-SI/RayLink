@@ -14,7 +14,7 @@
     "check": "node --check server/index.js && node --check web/app.js && npm test",
     "check:protocols": "node tests/protocol-check.mjs",
     "check:soak": "node --expose-gc tests/soak-memory.mjs",
-    "check:production": "npm run check && npm run check:protocols && npm run check:traffic && npm run check:tuic && npm run check:dns && npm run check:runtime-dns && npm run check:health && npm run check:routing && npm run check:ai && npm run check:ai-upstream && npm run check:soak",
+    "check:production": "npm run check && npm run check:protocols && npm run check:traffic && npm run check:tuic && npm run check:dns && npm run check:runtime-dns && npm run check:health && npm run check:routing && npm run check:ai && npm run check:ai-upstream && npm run check:cdn && npm run check:soak",
     "check:traffic": "node tests/runtime-traffic-check.mjs",
     "check:dns": "node tests/dns-resilience-check.mjs",
     "check:routing": "node tests/smart-routing-check.mjs && node tests/smart-routing-check.mjs --ip-priority && node tests/smart-routing-check.mjs --bundled-geolocation && node tests/route-failover-check.mjs && node tests/unified-client-routing-check.mjs --deferred-startup && node tests/domestic-dns-routing-check.mjs",
@@ -26,12 +26,12 @@
     "check:cdn": "node tests/cdn-ingress-check.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/node": "2.1.0",
-    "@modelcontextprotocol/server": "2.2.0",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "ssh2": "1.17.0",
-    "zod": "4.2.0"
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.2.0"
+    "@modelcontextprotocol/client": "2.4.0"
   }
 }

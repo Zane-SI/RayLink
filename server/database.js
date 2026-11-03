@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname } from "node:path";
 import { isIP } from "node:net";
 import { isDeepStrictEqual } from "node:util";
@@ -336,6 +336,12 @@ export class RayLinkStore {
     clock = () => new Date()
   }) {
     mkdirSync(dirname(dbPath), { recursive: true });
+    if (dbPath !== ":memory:") {
+      closeSync(openSync(dbPath, "a", 0o600));
+      for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+        if (existsSync(path)) chmodSync(path, 0o600);
+      }
+    }
     this.db = new DatabaseSync(dbPath);
     // Configure the busy handler before any pragma that may need to upgrade
     // the database lock. Multiple control-plane workers can open the same

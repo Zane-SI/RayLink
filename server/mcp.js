@@ -103,6 +103,7 @@ export function createMcpService({ store, credentials, rolePermissions, originAl
   const handler = createMcpHandler(({ authInfo }) => {
     const principal = authInfo.extra.principal;
     const server = new McpServer({ name: "raylink", version: "1.0.0" }, {
+      maxToolInputElements: 10_000,
       instructions: "RayLink 管理工具。先读取现状再修改；配置发布后检查 deployments/readiness，queued 或 pending 不代表节点已生效。所有写操作必须使用唯一 requestId；同一操作网络重试沿用原 requestId。机密输出仅按任务需要使用，勿写入公开内容。"
     });
     for (const tool of mcpTools.filter((entry) => permitted(principal, entry))) {

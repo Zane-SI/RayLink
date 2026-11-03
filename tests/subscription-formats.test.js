@@ -78,7 +78,8 @@ test("Mihomo certificate TLS exports retain explicit ALPN and enabled client fin
 test("smart Mihomo subscriptions validate domestic DNS candidates without changing explicit modes", () => {
   for (const format of ["mihomo", "mihomo-modern"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig }).body;
-    assert.match(body, /\n  nameserver:\n    - "https:\/\/223\.5\.5\.5\/dns-query"\n    - "https:\/\/223\.6\.6\.6\/dns-query"\n/);
+    assert.match(body, /\n  nameserver:\n    - "https:\/\/223\.5\.5\.5\/dns-query"\n    - "https:\/\/doh\.pub\/dns-query"\n/);
+    assert.match(body, /\n  fallback-lazy-query: true\n/);
     assert.match(body, /\n  fallback:\n    - "https:\/\/1\.1\.1\.1\/dns-query#普通代理"\n/);
     assert.match(body, /\n  fallback-filter:\n    geoip: false\n    ipcidr:/);
     assert.match(body, /\n      - "::\/0"\n/);

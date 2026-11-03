@@ -3,6 +3,13 @@ import test from "node:test";
 
 import { evaluateOperationalAlerts } from "../server/alerts.js";
 
+test("disk capacity warns at eighty percent and escalates without duplicate alerts", () => {
+  for (const [used, expected] of [[79, []], [80, ["HOST_DISK_WARNING"]], [89, ["HOST_DISK_WARNING"]], [90, ["HOST_DISK_CRITICAL"]]]) {
+    const alerts = evaluateOperationalAlerts({ hosts: [{ id: "local", name: "Host", telemetry: { diskTotalBytes: 100, diskUsedBytes: used } }] });
+    assert.deepEqual(alerts.filter((alert) => alert.code.startsWith("HOST_DISK_")).map((alert) => alert.code), expected);
+  }
+});
+
 test("a fresh Node heartbeat does not hide a stopped remote Runtime", () => {
   const now = new Date();
   const alerts = evaluateOperationalAlerts({ now, hosts: [{

@@ -112,7 +112,7 @@ async function waitForProfile(format, nodes, aiNodes) {
       observed = {
         statuses: Object.fromEntries(results.map(({ path, status }) => [path, status])),
         missingGroups: groups.filter((name) => !Array.isArray(proxies[name]?.all) || !proxies[name].all.length),
-        missingNodes: nodes.filter((name) => !proxies[name]),
+        missingNodes: nodes.filter((name) => !proxies[name] && !providerNodes.includes(name)),
         aiCandidates: proxies["AI 代理"]?.all || [],
         providerCandidates: providerNodes,
         ruleCounts: ["raylink-cn-domain", "raylink-cn-ip"].map((name) => rules[name]?.ruleCount || 0),
@@ -292,10 +292,11 @@ try {
       .replace('log-level: "info"', 'log-level: "debug"')
       .replace('  enhanced-mode: "fake-ip"', `  enhanced-mode: "fake-ip"\n  listen: "127.0.0.1:${dnsPort}"\n  direct-nameserver: ["${directDial.endpoint}"]\n  direct-nameserver-follow-policy: false`)
       .replaceAll("https://223.5.5.5/dns-query", domestic.endpoint)
-      .replaceAll("https://223.6.6.6/dns-query", domestic.endpoint)
+      .replaceAll("https://doh.pub/dns-query", domestic.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#AI 代理", aiDns.endpoint)
       .replaceAll("https://1.1.1.1/dns-query#普通代理", remote.endpoint)
       .replaceAll('"223.5.5.5"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
+      .replaceAll('"119.29.29.29"', JSON.stringify(`127.0.0.1:${domestic.socket.address().port}`))
       .replaceAll('"system"', JSON.stringify(domestic.endpoint));
     if (format === "mihomo") {
       yaml = yaml.replace(/\nproxies:\n[\s\S]*?(?=\nproxy-groups:\n)/, `\n${stringifyYaml({ proxies: fixtureProxies }).trimEnd()}`);

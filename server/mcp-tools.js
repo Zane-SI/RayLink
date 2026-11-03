@@ -3,6 +3,22 @@ import { protocolCatalog } from "./singbox/protocol-catalog.js";
 import { safeManagementOutput as safeOutput } from "./management-output.js";
 
 const requestId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/);
+// Run an iterative bound before recursive JSON validation. Deep or very broad
+// advanced options must fail without building thousands of validation issues.
+const boundedJson = z.unknown().refine((value) => {
+  const pending = [{ value, depth: 0 }];
+  let elements = 0;
+  while (pending.length) {
+    const item = pending.pop();
+    if (item.depth > 24 || ++elements > 10_000) return false;
+    if (item.value && typeof item.value === "object") {
+      const children = Object.values(item.value);
+      if (elements + pending.length + children.length > 10_000) return false;
+      for (const child of children) pending.push({ value: child, depth: item.depth + 1 });
+    }
+  }
+  return true;
+}, "Advanced JSON exceeds the depth or element limit").pipe(z.json());
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/);
 const pick = (value, keys) => Object.fromEntries(keys.filter((key) => value?.[key] !== undefined).map((key) => [key, value[key]]));
 const userView = (value) => pick(value, ["id", "name", "initials", "email", "portalStatus", "state", "usedGb", "quotaGb", "nodeScope", "expiresAt", "usagePeriod", "runtimeSync"]);
@@ -51,7 +67,7 @@ const userFields = {
   name: z.string().trim().min(1),
   email: z.email(),
   quotaGb: z.number().finite().positive(),
-  nodeScope: z.array(z.string().regex(/^(?:all|[a-z0-9][a-z0-9-]{1,31})$/)).min(1),
+  nodeScope: z.array(z.string().regex(/^(?:all|[a-z0-9][a-z0-9-]{1,31})$/)).min(1).max(1024),
   expiresAt: z.iso.date(),
   state: z.enum(["active", "warning", "disabled"]).optional(),
   portalStatus: z.enum(["active", "invited"]).optional(),
@@ -92,7 +108,7 @@ const protocolFields = {
   transport: z.strictObject({ type: z.enum(["none", "http", "ws", "quic", "grpc", "httpupgrade"]).optional(), path: z.string().optional(), serviceName: z.string().optional() }).optional(),
   // This named escape hatch is the existing advanced sing-box JSON API, not a
   // free-form REST request. Core identity/auth/listener fields stay managed.
-  options: z.record(z.string(), z.json()).refine((value) => !["type", "tag", "listen", "listen_port", "users", "tls", "transport", "__proto__", "constructor", "prototype"].some((key) => Object.hasOwn(value, key)), "Advanced options cannot override managed fields").optional()
+  options: boundedJson.pipe(z.record(z.string(), z.json())).refine((value) => !["type", "tag", "listen", "listen_port", "users", "tls", "transport", "__proto__", "constructor", "prototype"].some((key) => Object.hasOwn(value, key)), "Advanced options cannot override managed fields").optional()
 };
 const protocolPath = (args) => `${hostPath(args)}/protocols/${encodeURIComponent(args.protocolType)}`;
 const routingFields = {

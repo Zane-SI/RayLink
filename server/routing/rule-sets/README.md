@@ -3,7 +3,7 @@
 The bundled domain and IP sets have different sources and freshness dates. `manifest.json` records the exact SHA-256, byte sizes, decoded JSON hashes, classification counts and source metadata. `publishedAt` is the bundle's packaging date, not proof that either upstream source is current.
 
 - Domains remain unchanged at [SagerNet sing-geosite commit a9958574](https://github.com/SagerNet/sing-geosite/tree/a9958574d2c9c8c1f01b726ef9930e0244b10b23). The bundle preserves exact domains, suffixes and regular expressions.
-- IPs are derived from [DB-IP IP to Country Lite, October 2026](https://db-ip.com/db/download/ip-to-country-lite), selecting the CSV geographical `country=CN` records. The source contains 710,834 records; the 10,041 selected ranges normalize to 15,365 non-overlapping CIDRs (8,331 IPv4 and 7,034 IPv6). This is geographical classification, not ISP registration, ASN ownership or a provider-wide exception.
+- IPs are derived from [DB-IP IP to Country Lite, November 2026](https://db-ip.com/db/download/ip-to-country-lite), selecting the CSV geographical `country=CN` records. The source contains 732,796 records; the 9,975 selected ranges normalize to 15,189 non-overlapping CIDRs (8,161 IPv4 and 7,028 IPv6). This is geographical classification, not ISP registration, ASN ownership or a provider-wide exception. The official uncompressed SHA-1 was independently checked before compilation; `country-review.json` records the full October-to-November coverage difference.
 
 The former SagerNet `registered_country` baseline missed geographically Chinese cloud addresses whose ISP registration was overseas. For example, `8.141.181.226` and `8.142.1.1` are CN in both the selected DB-IP source and GeoLite2 Country 2026-09-12's `country.iso_code`, whereas that GeoLite2 edition's `registered_country.iso_code` is SG. The secondary database is only a review cross-check; it is not a source of bundled data.
 
@@ -24,7 +24,7 @@ Download the pinned `source.url` to a local file, then run:
 ```sh
 python3 server/routing/rule-sets/generate-country.py \
   server/routing/rule-sets/country-source.json \
-  /path/to/dbip-country-lite-2026-10.csv.gz \
+  /path/to/dbip-country-lite-2026-11.csv.gz \
   /tmp/new-cn-candidate \
   --sing-box /path/to/sing-box
 ```

@@ -23,6 +23,7 @@ import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 import { getDomesticDnsFallbackCidrs } from "../routing/domestic-dns.js";
 
 const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
+const domesticMihomoDns = ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"];
 
 const bundledRulesVersion = JSON.parse(readFileSync(new URL("../routing/rule-sets/manifest.json", import.meta.url))).version;
 const bundledRulesComment = `# 智能分流内置规则版本: ${bundledRulesVersion}\n`
@@ -262,7 +263,7 @@ function isIpv6Value(value) {
 }
 
 function dnsPolicyValue(dns, action) {
-  if (dns === "domestic") return ["https://223.5.5.5/dns-query"];
+  if (dns === "domestic") return [...domesticMihomoDns];
   if (dns === "system") return ["system"];
   return [`https://1.1.1.1/dns-query#${action === "ai" ? ROUTE_POLICY_GROUPS.ai.name : ROUTE_POLICY_GROUPS.proxy.name}`];
 }
@@ -752,11 +753,15 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
         ...(routePolicy.mode === "smart" ? [...TAILSCALE_DOMAIN_SUFFIXES, ...TAILSCALE_SHARED_DOMAIN_SUFFIXES].map((suffix) => `+.${suffix}`) : [])
       ])],
       "respect-rules": true,
-      "default-nameserver": ["223.5.5.5"],
+      "default-nameserver": ["223.5.5.5", "119.29.29.29"],
       nameserver: routePolicy.mode !== "global-proxy"
-        ? ["https://223.5.5.5/dns-query", ...(routePolicy.mode === "smart" ? ["https://223.6.6.6/dns-query"] : [])]
+        ? routePolicy.mode === "smart" ? [...domesticMihomoDns] : [domesticMihomoDns[0]]
         : [`https://1.1.1.1/dns-query#${ROUTE_POLICY_GROUPS.proxy.name}`],
       ...(routePolicy.mode === "smart" ? {
+        // Newer cores otherwise race the foreign fallback even for a healthy
+        // domestic answer. Older cores ignore this field and retain their
+        // existing sequential behavior.
+        "fallback-lazy-query": true,
         // Unknown domestic services need a nearby CDN answer before IP routing.
         // Reject every non-CN candidate; explicit DNS policies still take priority.
         fallback: [`https://1.1.1.1/dns-query#${ROUTE_POLICY_GROUPS.proxy.name}`],
@@ -765,17 +770,15 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
       "nameserver-policy": {
         ...mihomoDnsPolicyRules(routePolicy),
         ...(routePolicy.mode === "smart"
-          ? { "rule-set:raylink-cn-domain": ["https://223.5.5.5/dns-query"] }
+          ? { "rule-set:raylink-cn-domain": [...domesticMihomoDns] }
           : {})
       },
-      "proxy-server-nameserver": [
-        "https://223.5.5.5/dns-query"
-      ],
+      "proxy-server-nameserver": [...domesticMihomoDns],
       ...(pinnedHostnames.length ? {
         "proxy-server-nameserver-policy": Object.fromEntries(
           pinnedHostnames.map((hostname) => [
             hostname,
-            ["https://223.5.5.5/dns-query"]
+            [...domesticMihomoDns]
           ])
         )
       } : {})
