@@ -42,6 +42,7 @@ jobs:
           retention-days: 1
 
   production-check:
+    name: Production tests (Node ${{ matrix.node-version }}, Mihomo ${{ matrix.mihomo-version }})
     needs: runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -105,3 +106,16 @@ jobs:
           package="${RUNNER_TEMP}/raylink-${version}-linux-amd64.tar.gz"
           bash deploy/package-release.sh "$version" "$package"
           sudo env RAYLINK_DISPOSABLE_SYSTEM=1 bash tests/linux-install-smoke.sh "$package" "$version"
+
+  required-checks:
+    name: RayLink CI
+    if: ${{ always() }}
+    needs: [runtime, production-check, installation-check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require all acceptance jobs to succeed
+        env:
+          RAYLINK_REQUIRED_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: node .github/scripts/check-required-jobs.mjs
