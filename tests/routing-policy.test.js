@@ -15,7 +15,7 @@ test("AI manual selection is explicit and legacy policies retain protocol fallba
     assert.throws(() => normalizeRoutingPolicy({ aiSelection }), error => error.code === "INVALID_AI_SELECTION");
   }
   assert.deepEqual(routingDecisionForDomain({}, "www.google.com.hk"), {
-    action: "proxy", source: "proxy-domain", ruleId: null, dns: "remote"
+    action: "proxy", source: "google", ruleId: null, dns: "remote"
   });
   assert.equal(routingDecisionForDomain({}, "google.com.hk.example").action, "resolve");
 });

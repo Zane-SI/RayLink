@@ -1,17 +1,14 @@
 import { readFileSync } from "node:fs";
 import {
-  AI_DOMAIN_NAMES,
-  AI_DOMAIN_SUFFIXES,
-  APP_STORE_DOMAIN_NAMES,
-  APP_STORE_DOMAIN_SUFFIXES,
-  CHINA_FALLBACK_DOMAIN_SUFFIXES,
+  AI_SERVICE_RULE,
   createRoutePolicyCandidates,
+  DIRECT_SERVICE_RULES,
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
   PRIVATE_NETWORK_CIDRS,
-  PROXY_DOMAIN_SUFFIXES,
   routeProbeUrlFromConfig,
   ROUTE_POLICY_GROUPS,
+  SMART_SERVICE_RULES,
   TAILSCALE_DOMAIN_SUFFIXES,
   TAILSCALE_SHARED_DOMAIN_SUFFIXES
 } from "../routing/policy.js";
@@ -22,7 +19,6 @@ import {
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 import { getDomesticDnsFallbackCidrs } from "../routing/domestic-dns.js";
 
-const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
 const domesticMihomoDns = ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"];
 
 const bundledRulesVersion = JSON.parse(readFileSync(new URL("../routing/rule-sets/manifest.json", import.meta.url))).version;
@@ -294,29 +290,11 @@ function mihomoDnsPolicyRules(policy) {
     priorDomains.push(rule);
   }
   if (policy.mode === "smart") {
-    for (const rule of [
-      ...TAILSCALE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value })),
-      ...APP_STORE_DOMAIN_NAMES.map(value => ({ match: "domain", value })),
-      ...APP_STORE_DOMAIN_SUFFIXES.map(value => ({ match: "domain_suffix", value }))
-    ]) {
-      const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
-      if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue("domestic", "direct");
-    }
-    for (const domain of AI_DOMAIN_NAMES) {
-      const key = domain;
-      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("remote", "ai");
-    }
-    for (const domain of AI_DOMAIN_SUFFIXES) {
-      const key = `+.${domain}`;
-      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("remote", "ai");
-    }
-    for (const domain of PROXY_DOMAIN_SUFFIXES) {
-      const key = `+.${domain}`;
-      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("remote", "proxy");
-    }
-    for (const domain of chinaFallbackSuffixes) {
-      const key = `+.${domain}`;
-      if (!Object.hasOwn(rules, key) && !covered(domain)) rules[key] = dnsPolicyValue("domestic", "direct");
+    for (const { domains, dns, action } of [...DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...SMART_SERVICE_RULES]) {
+      for (const rule of domains) {
+        const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
+        if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue(dns, action);
+      }
     }
   }
   return rules;
@@ -807,23 +785,18 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     rules: [
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
-      ...(routePolicy.mode === "smart" ? [
-        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
-        ...APP_STORE_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},DIRECT`),
-        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`)
-      ] : []),
-      ...AI_DOMAIN_NAMES.map((domain) => `DOMAIN,${domain},${aiPolicy}`),
-      ...AI_DOMAIN_SUFFIXES.map((domain) => `DOMAIN-SUFFIX,${domain},${aiPolicy}`),
+      ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
+        domains.map(rule => mihomoRule({ ...rule, action }))) : []),
+      ...AI_SERVICE_RULE.domains.map(({ match, value }) =>
+        `${match === "domain" ? "DOMAIN" : "DOMAIN-SUFFIX"},${value},${aiPolicy}`),
       ...(adblockProvider ? ["RULE-SET,raylink-adblock,REJECT"] : []),
       ...(routePolicy.mode === "direct"
         ? [...mihomoPrivateIpRules({ resolveDomains: true }), "MATCH,DIRECT"]
         : routePolicy.mode === "global-proxy"
           ? [...mihomoPrivateIpRules({ resolveDomains: true }), `MATCH,${ROUTE_POLICY_GROUPS.proxy.name}`]
           : [
-              ...PROXY_DOMAIN_SUFFIXES.map(
-                (domain) => `DOMAIN-SUFFIX,${domain},${ROUTE_POLICY_GROUPS.proxy.name}`
-              ),
-              ...chinaFallbackSuffixes.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`),
+              ...SMART_SERVICE_RULES.flatMap(({ domains, action }) =>
+                domains.map(rule => mihomoRule({ ...rule, action }))),
               "RULE-SET,raylink-cn-domain,DIRECT",
               ...mihomoPrivateIpRules({ resolveDomains: true }),
               "RULE-SET,raylink-cn-ip,DIRECT",
@@ -1042,27 +1015,10 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
-        ...(routePolicy.mode === "smart" ? TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({
-          domain_suffix: { match: domain, value: "domestic" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_NAMES.map((domain) => ({
-          domain: { match: domain, value: "domestic" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({
-          domain_suffix: { match: domain, value: "domestic" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? AI_DOMAIN_NAMES.map((domain) => ({
-          domain: { match: domain, value: "ai" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? AI_DOMAIN_SUFFIXES.map((domain) => ({
-          domain_suffix: { match: domain, value: "ai" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? PROXY_DOMAIN_SUFFIXES.map((domain) => ({
-          domain_suffix: { match: domain, value: "overseas" }
-        })) : []),
-        ...(routePolicy.mode === "smart" ? chinaFallbackSuffixes.map((domain) => ({
-          domain_suffix: { match: domain, value: "domestic" }
-        })) : []),
+        ...(routePolicy.mode === "smart" ? [...DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...SMART_SERVICE_RULES]
+          .flatMap(({ domains, action, dns }) => domains.map(({ match, value }) => ({
+            [match]: { match: value, value: dns === "domestic" ? "domestic" : action === "ai" ? "ai" : "overseas" }
+          }))) : []),
         ...(routePolicy.mode === "smart" ? egernChinaDomains("value", "domestic") : []),
         {
           domain_wildcard: {
@@ -1079,6 +1035,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         smart: {
           name: ROUTE_POLICY_GROUPS.smart.name,
+          hidden: true,
           policies: smartNames,
           priorities: {
             "(?i)SHADOWSOCKS|VLESS|TROJAN|ANYTLS|VMESS": 0.85,
@@ -1090,6 +1047,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       ...(tcp.length ? [{
         auto_test: {
           name: ROUTE_POLICY_GROUPS.tcp.name,
+          hidden: true,
           policies: tcp,
           interval: 300,
           tolerance: 100,
@@ -1099,6 +1057,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       ...(udp.length ? [{
         auto_test: {
           name: ROUTE_POLICY_GROUPS.udp.name,
+          hidden: true,
           policies: udp,
           interval: 300,
           tolerance: 120,
@@ -1108,6 +1067,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         fallback: {
           name: ROUTE_POLICY_GROUPS.fallback.name,
+          hidden: true,
           policies: fallbackGroups,
           interval: 60,
           timeout: 5,
@@ -1117,6 +1077,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         conditional: {
           name: "网络环境",
+          hidden: true,
           rules: [
             {
               cellular: {
@@ -1144,6 +1105,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         [aiUnavailable ? "select" : "fallback"]: {
           name: ROUTE_POLICY_GROUPS.aiStable.name,
+          hidden: true,
           policies: aiUnavailable ? ["REJECT"] : aiFallback,
           ...(!aiUnavailable ? { interval: 60, timeout: 5, latency_test_url: probeUrl } : {})
         }
@@ -1167,6 +1129,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         select: {
           name: ROUTE_POLICY_GROUPS.manual.name,
+          hidden: true,
           policies: [
             "网络环境",
             ROUTE_POLICY_GROUPS.smart.name,
@@ -1181,31 +1144,19 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
     rules: [
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
-      ...(routePolicy.mode === "smart" ? [
-        ...TAILSCALE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } })),
-        ...APP_STORE_DOMAIN_NAMES.map((domain) => ({ domain: { match: domain, policy: "DIRECT" } })),
-        ...APP_STORE_DOMAIN_SUFFIXES.map((domain) => ({ domain_suffix: { match: domain, policy: "DIRECT" } }))
-      ] : []),
+      ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
+        domains.map(rule => egernCustomRule({ ...rule, action }))) : []),
       // Default DNS connections follow the AI exit unless explicitly overridden.
       ...(usesAiDns ? [{ ip_cidr: { match: "9.9.9.9/32", policy: ROUTE_POLICY_GROUPS.ai.name, no_resolve: true } }] : []),
-      ...AI_DOMAIN_NAMES.map((domain) => ({
-        domain: { match: domain, policy: aiPolicy }
-      })),
-      ...AI_DOMAIN_SUFFIXES.map((domain) => ({
-        domain_suffix: { match: domain, policy: aiPolicy }
-      })),
+      ...AI_SERVICE_RULE.domains.map(({ match, value }) => ({ [match]: { match: value, policy: aiPolicy } })),
       ...egernAdblockRules(singBoxConfig),
       ...(routePolicy.mode === "direct"
         ? [...egernPrivateIpRules({ resolveDomains: true }), { default: { policy: "DIRECT" } }]
         : routePolicy.mode === "global-proxy"
           ? [...egernPrivateIpRules({ resolveDomains: true }), { default: { policy: ROUTE_POLICY_GROUPS.proxy.name } }]
           : [
-              ...PROXY_DOMAIN_SUFFIXES.map((domain) => ({
-                domain_suffix: { match: domain, policy: ROUTE_POLICY_GROUPS.proxy.name }
-              })),
-              ...chinaFallbackSuffixes.map((domain) => ({
-                domain_suffix: { match: domain, policy: "DIRECT" }
-              })),
+              ...SMART_SERVICE_RULES.flatMap(({ domains, action }) =>
+                domains.map(rule => egernCustomRule({ ...rule, action }))),
               ...egernChinaDomains("policy", "DIRECT"),
               ...egernPrivateIpRules({ resolveDomains: true }),
               ...chinaIpCidrs.map((cidr) => ({ [isIpv6Value(cidr) ? "ip_cidr6" : "ip_cidr"]: { match: cidr, policy: "DIRECT" } })),

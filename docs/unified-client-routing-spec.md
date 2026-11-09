@@ -20,3 +20,27 @@
 ## 发布与迁移
 
 v0.2.44，沿用正式构建、校验、备份与升级流程。当前生产策略保留 smart / pinned local，在保存完整原规则的前提下启用 manual。Runtime 不需重启。此次部署启用可选的保留数据回滚；在候选数据库副本的结构和 user_version 确認未变化前拒绝采用该模式，失败仅恢复程序，避免恢复旧库覆盖新用量。通用升级的默认行为不变。Mac 先刷新完整订阅，再取消本地覆写并核对活动配置和真实请求。其他设备更新完整订阅；仅节点的 Egern/Loon 格式不携带规则。不能将 Mac/原生测试声明为全部手机或 AI 账号业务验收。
+
+### 按服务匹配，继续使用三个主组
+
+智能分流继续使用 **普通代理 / AI 代理 / 未分类流量**。Mihomo 与 Egern Profile
+标记内部测速、回退和兼容组为隐藏，组名及其候选节点保留。sing-box 的显示方式由前端决定；
+节点列表格式（Loon、Egern）不携带完整分流规则。
+
+- 国内应用：对微信、抖音、淘宝、支付宝、京东、B 站、小红书等已知域名及专用媒体域名直连。
+  未知域名、共享 CDN 继续用原有国内域名和 IP 规则，不把整个 CDN 加入直连。
+- App Store：商店、下载和 Apple 账号依赖走直连，包括 iOS 替代应用市场域名。
+  其他 Apple/iCloud 域名不因此强制直连。
+- Tailscale：控制面和 DERP 走直连，保留客户端已有的 Tailnet 私网旁路；
+  不把所有 `ts.net` 域名当作私有 DNS 或流量。
+- Google 和 YouTube 各自识别，均使用普通代理。YouTube API 优先于共享的 Google API 后缀。
+  Google 搜索、账号、Drive 与 YouTube 播放、嵌入和媒体不走 AI 住宅出口。
+- AI：ChatGPT、Claude、Gemini 及相关登录和资源域名保留现有 AI 规则；
+  Gemini 和 AI Studio 优先于通用 Google。是否走住宅出口仍由原有 AI 设置决定。
+
+保持局域网和自定义规则优先；Tailscale、App Store、AI 服务规则先于广告拦截，
+其余已知服务在广告拦截之后、通用地理规则之前。未知 DNS 的国内地址校验和远端回退保持原状。
+服务范围参考 [Apple 企业网络域名](https://support.apple.com/en-us/101555)、
+[Tailscale 控制与 DERP](https://tailscale.com/docs/reference/faq/firewall-ports)、
+[YouTube 嵌入](https://support.google.com/youtube/answer/171780) 和
+[Egern 策略组配置](https://egernapp.com/docs/configuration/policy_groups/)。

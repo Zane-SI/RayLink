@@ -271,6 +271,7 @@ try {
   const expectedAi = [aiFirst, aiChosen];
 
   for (const format of ["mihomo", "mihomo-modern"]) {
+    const firstRequest = requestNumber;
     const formatDir = join(directory, format);
     await mkdir(formatDir, { mode: 0o700 });
     for (const [name, marker] of [[aiFirst, "AI_FIRST"], [aiChosen, "AI_CHOSEN"], [ordinary, "ORDINARY"]]) {
@@ -354,26 +355,26 @@ try {
       "--socks5-hostname", `127.0.0.1:${mixedPort}`, `http://adservice.google.com:${targetPort}/blocked-ad`], { timeout: 4000 }),
     "Cold-start resilience must retain actual ad blocking after ordinary traffic succeeds");
 
-    for (const [domain, dnsFixture] of [["controlplane.tailscale.com", domestic]]) {
+    for (const [domain, dnsFixture] of [["controlplane.tailscale.com", domestic], ["derp20.tailscale.com", domestic]]) {
       assert.equal(await dnsAddress(domain, dnsPort), "127.0.0.1", `${domain}: must avoid fake IP and use its local resolver`);
       await request(domain, targetPort, "DIRECT", "DomainSuffix", ["DIRECT"]);
       assert.ok(dnsFixture.queries.some(query => query.domain === domain));
       assert.ok(!remote.queries.some(query => query.domain === domain), `${domain}: must not leak DNS into the proxy path`);
     }
 
-    // Store authentication must not fall through to the ordinary/unknown
-    // proxy while its catalog and images use DIRECT. Check the actual native
-    // rule, delivered response and DNS resolver with the normal proxy selected.
+    // Store login, catalog and domestic app media use the same direct path.
+    // Require an actual native match, delivered response and selected resolver.
     for (const [domain, rule] of [
       ["apps.apple.com", "DomainSuffix"], ["amp-api.apps.apple.com", "DomainSuffix"],
       ["p48-buy.itunes.apple.com", "DomainSuffix"], ["is1-ssl.mzstatic.com", "DomainSuffix"],
-      ["gsa.apple.com", "Domain"], ["idmsa.apple.com", "Domain"]
+      ["gsa.apple.com", "Domain"], ["idmsa.apple.com", "Domain"],
+      ["apps-marketplace.apple.com", "DomainSuffix"], ["sf1.douyinpic.com", "DomainSuffix"]
     ]) {
       const answer = await api(`/dns/query?name=${domain}&type=A`);
       assert.ok(answer.Answer?.some(({ data }) => data === "127.0.0.1"), `${domain}: must use the domestic DNS fixture`);
       await request(domain, targetPort, "DIRECT", rule, ["DIRECT"]);
       assert.ok(domestic.queries.some(query => query.domain === domain));
-      assert.ok(!remote.queries.some(query => query.domain === domain), `${domain}: Store DNS must not take the proxy path`);
+      assert.ok(!remote.queries.some(query => query.domain === domain), `${domain}: direct service DNS must not take the proxy path`);
     }
 
     // A geographical answer must not steal explicit AI, overseas or custom
@@ -382,6 +383,15 @@ try {
       const answer = await api(`/dns/query?name=${domain}&type=A`);
       assert.equal(answer.Status, 0);
       assert.ok(answer.Answer?.some(({ data }) => data === "8.141.181.226"), `${domain}: priority fixture must resolve to a geographical CN IP`);
+    }
+
+    for (const [domain, kind, suffix] of [
+      ["www.youtube-nocookie.com", "DomainSuffix", "youtube-nocookie.com"],
+      ["youtubei.googleapis.com", "Domain", "youtubei.googleapis.com"],
+      ["drive.googleusercontent.com", "DomainSuffix", "googleusercontent.com"]
+    ]) {
+      const match = await request(domain, targetPort, "ORDINARY", kind, [ordinary, "普通代理"]);
+      assert.equal(match.rulePayload, suffix, domain);
     }
 
     for (const [domain, address] of geolocationCases) {
@@ -431,7 +441,7 @@ try {
     console.log(JSON.stringify({ format, manualAiMembership: expectedAi, unknownSwitchIsolated: true, lanFakeIpExcluded: true,
       aiOutageDoesNotChangeNode: true, geographicCnCloudIps: [...geolocationCases.values()].filter((address) => address !== "1.1.1.1"),
       foreignIpRetainsUnknownGroup: true, appStoreDirectAndLocalDns: true, tailscaleControlBypass: true, remoteRuleDownloadIndependent: true,
-      realNativeConnections: 27, scope: "loopback fixtures only" }));
+      realNativeConnections: requestNumber - firstRequest, scope: "loopback fixtures only" }));
     await stopCore();
     for (const fixture of fixtures.values()) await stopFixture(fixture);
     fixtures.clear();

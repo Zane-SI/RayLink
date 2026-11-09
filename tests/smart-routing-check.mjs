@@ -131,6 +131,21 @@ try {
     ["192.0.2.20", "DIRECT"], ["203.0.113.20", "PROXY"],
     ["api.known.cn", "DIRECT"], ["chatgpt.com", "PROXY"], ["google.com", "PROXY"]
   ];
+  const serviceCases = [
+    ["sf1.douyinpic.com", "direct"],
+    ["apps-marketplace.apple.com", "direct"],
+    ["derp20.tailscale.com", "direct"],
+    ["www.youtube-nocookie.com", "raylink-auto"],
+    ["youtubei.googleapis.com", "raylink-auto"],
+    ["drive.googleusercontent.com", "raylink-auto"],
+    ["gemini.google.com", "raylink-ai"]
+  ];
+  for (const [domain, outbound] of serviceCases) {
+    const logStart = logs.length;
+    assert.equal(await request(domain), outbound === "direct" ? "DIRECT" : "PROXY", domain);
+    assert.match(logs.slice(logStart), new RegExp(`=> route\\(${outbound}[,)]`), `${domain}: wrong selector\n${logs.slice(logStart)}`);
+  }
+  console.log(JSON.stringify({ serviceRouting: Object.fromEntries(serviceCases) }));
   for (const [domain, expected] of cases) {
     const logStart = logs.length;
     assert.equal(await request(domain), expected, `${domain}: wrong exit\n${logs}`);

@@ -1,25 +1,26 @@
 import { createHmac } from "node:crypto";
 
 import {
-  AI_DOMAIN_NAMES,
-  AI_DOMAIN_SUFFIXES,
-  APP_STORE_DOMAIN_NAMES,
-  APP_STORE_DOMAIN_SUFFIXES,
-  CHINA_FALLBACK_DOMAIN_SUFFIXES,
+  AI_SERVICE_RULE,
   DEFAULT_ROUTE_PROBE_URL,
+  DIRECT_SERVICE_RULES,
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
-  PROXY_DOMAIN_SUFFIXES,
   ROUTE_POLICY_GROUPS,
-  TAILSCALE_DOMAIN_SUFFIXES,
+  SMART_SERVICE_RULES,
   TAILNET_NETWORK_CIDRS
 } from "../routing/policy.js";
 import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
 import { getDomesticDnsFallbackCidrs } from "../routing/domestic-dns.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 
-const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
 const IPV4_ONLY_OMITTED_RECORDS = ["AAAA", "SVCB", "HTTPS"];
+
+function serviceMatch({ domains }) {
+  const match = {};
+  for (const rule of domains) (match[rule.match] ??= []).push(rule.value);
+  return match;
+}
 
 function proxyDnsRules(match, server, resolvesCustomIps) {
   const route = { ...match, action: "route", server };
@@ -631,7 +632,7 @@ function clientConfigForOutbounds(
           : rule.action === "ai" ? "dns-ai" : "dns-remote"
     }];
   });
-  const aiDnsMatch = { domain: [...AI_DOMAIN_NAMES], domain_suffix: [...AI_DOMAIN_SUFFIXES] };
+  const aiDnsMatch = serviceMatch(AI_SERVICE_RULE);
   let resolvesCustomIps = false;
   const customRouteRules = routePolicy.rules.flatMap((rule) => {
     if (!rule.enabled) return [];
@@ -666,12 +667,21 @@ function clientConfigForOutbounds(
   // Keep the exact addresses already checked by earlier IP rules. Re-resolving
   // a TTL=0/rotating answer here could dial an IP that those rules would reject.
   const resolveRemaining = (match = {}) => resolvesCustomIps ? [] : [{ ...match, action: "resolve" }];
+  const serviceRouteRules = (service) => {
+    const match = serviceMatch(service);
+    return [...resolveRemaining(match), { ...match, action: "route", outbound: ROUTE_POLICY_GROUPS[service.action].tag }];
+  };
+  const serviceDnsRules = (service) => {
+    const match = serviceMatch(service);
+    return service.dns === "domestic"
+      ? [{ ...match, action: "route", server: "dns-domestic" }]
+      : proxyDnsRules(match, "dns-remote", resolvesCustomIps);
+  };
   const managedAiRouteRules = [{
     // Keep AI domains ahead of the upstream ad-block list in every mode. The
     // reviewed list contains r.openai.com, so relying on the final route would
     // reject a legitimate AI dependency in direct/global modes.
-    domain: [...AI_DOMAIN_NAMES],
-    domain_suffix: [...AI_DOMAIN_SUFFIXES],
+    ...aiDnsMatch,
     ...(routePolicy.mode === "smart" && aiUnavailable
       ? { action: "reject" }
       : {
@@ -685,18 +695,7 @@ function clientConfigForOutbounds(
   }];
   const managedRouteRules = routePolicy.mode === "smart"
     ? [
-        ...resolveRemaining({ domain_suffix: [...PROXY_DOMAIN_SUFFIXES] }),
-        {
-          domain_suffix: [...PROXY_DOMAIN_SUFFIXES],
-          action: "route",
-          outbound: ROUTE_POLICY_GROUPS.proxy.tag
-        },
-        ...resolveRemaining({ domain_suffix: [...chinaFallbackSuffixes] }),
-        {
-          domain_suffix: [...chinaFallbackSuffixes],
-          action: "route",
-          outbound: ROUTE_POLICY_GROUPS.direct.tag
-        },
+        ...SMART_SERVICE_RULES.flatMap(serviceRouteRules),
         ...resolveRemaining({ rule_set: "geosite-geolocation-cn" }),
         {
           rule_set: "geosite-geolocation-cn",
@@ -759,25 +758,13 @@ function clientConfigForOutbounds(
           server: "dns-local"
         },
         ...customDnsRules,
-        ...(routePolicy.mode === "smart" ? [{
-          domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES], action: "route", server: "dns-domestic"
-        }, {
-          domain: [...APP_STORE_DOMAIN_NAMES],
-          domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
-          action: "route",
-          server: "dns-domestic"
-        },
-        ...(aiUnavailable ? [{ ...aiDnsMatch, action: "reject" }] : proxyDnsRules(aiDnsMatch, "dns-ai", resolvesCustomIps)),
-        ...proxyDnsRules({ domain_suffix: [...PROXY_DOMAIN_SUFFIXES] }, "dns-remote", resolvesCustomIps),
-        {
-          domain_suffix: [...chinaFallbackSuffixes],
-          action: "route",
-          server: "dns-domestic"
-        }, {
-          rule_set: "geosite-geolocation-cn",
-          action: "route",
-          server: "dns-domestic"
-        }, ...(!resolvesCustomIps ? unclassifiedAddressDnsRules() : [])] : []),
+        ...(routePolicy.mode === "smart" ? [
+          ...DIRECT_SERVICE_RULES.flatMap(serviceDnsRules),
+          ...(aiUnavailable ? [{ ...aiDnsMatch, action: "reject" }] : proxyDnsRules(aiDnsMatch, "dns-ai", resolvesCustomIps)),
+          ...SMART_SERVICE_RULES.flatMap(serviceDnsRules),
+          { rule_set: "geosite-geolocation-cn", action: "route", server: "dns-domestic" },
+          ...(!resolvesCustomIps ? unclassifiedAddressDnsRules() : [])
+        ] : []),
         ...(routePolicy.mode === "global-proxy" && !resolvesCustomIps ? [
           { query_type: IPV4_ONLY_OMITTED_RECORDS, action: "predefined" },
           { query_type: ["A"], action: "route", server: "dns-remote", remove_client_subnet: true }
@@ -865,19 +852,7 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
-        ...(routePolicy.mode === "smart" ? [
-          ...resolveRemaining({ domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES] }),
-          { domain_suffix: [...TAILSCALE_DOMAIN_SUFFIXES], action: "route", outbound: "direct" }
-        ] : []),
-        ...(routePolicy.mode === "smart" ? [
-          ...resolveRemaining({ domain: [...APP_STORE_DOMAIN_NAMES], domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES] }),
-          {
-            domain: [...APP_STORE_DOMAIN_NAMES],
-            domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
-            action: "route",
-            outbound: ROUTE_POLICY_GROUPS.direct.tag
-          }
-        ] : []),
+        ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(serviceRouteRules) : []),
         ...managedAiRouteRules,
         { rule_set: "adblock-johnshall", action: "reject" },
         ...managedRouteRules

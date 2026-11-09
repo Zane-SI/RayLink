@@ -373,7 +373,7 @@ function renderRuntime() {
 const routingModeCopy = {
   smart: {
     title: "智能分流",
-    description: "内网和国内流量直接访问，AI 与境外流量走代理；未知域名先解析真实 IP，仍未分类的流量进入可手动切换的“未分类流量”组。"
+    description: "国内应用、App Store 和 Tailscale 控制流量优先直连；Google 和 YouTube 走普通代理，ChatGPT、Claude 和 Gemini 等走 AI 代理。未知域名先按 IP 判断，仍未分类的流量可在“未分类流量”组手动切换。"
   },
   "global-proxy": {
     title: "全局代理",
@@ -551,7 +551,12 @@ function renderRoutingDiagnostic(diagnostic) {
   const result = document.querySelector("#routing-diagnose-result");
   if (!result) return;
   const ai = diagnostic.aiDomain;
-  const sources = { custom: "自定义规则", builtin: "内置 AI 域名", regional: "Google 地区纠偏", shared: "已知共享 / 普通域名保护", none: "未匹配 AI 域名", ai: "内置 AI 规则", mode: "全局路由模式" };
+  const sources = {
+    custom: "自定义规则", builtin: "内置 AI 域名", regional: "Google 地区纠偏",
+    shared: "已知共享 / 普通域名保护", none: "未匹配 AI 域名", ai: "内置 AI 规则",
+    mode: "全局路由模式", "domestic-app": "国内应用及资源", "app-store": "App Store",
+    tailscale: "Tailscale", google: "Google", youtube: "YouTube"
+  };
   const addresses = diagnostic.addresses || [];
   const aiClassification = ai?.source === "regional" ? "Google 地区纠偏域名" : ai?.eligible ? "AI 专用域名" : ai?.source === "shared" ? "共享 / 普通保护域名" : "未识别为 AI 专用域名";
   const egressLabels = { residential: "住宅代理出口", server: "默认出口", blocked: "已拦截，无出口", "client-direct": "客户端直连", "client-selection": "未分类流量组，由客户端选择" };
