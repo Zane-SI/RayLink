@@ -60,20 +60,12 @@ export const AI_DOMAIN_NAMES = Object.freeze([
   "origin-tracker.githubusercontent.com"
 ]);
 
-// Explicit overseas services precede geographic inference; keep AI exceptions first.
-export const PROXY_DOMAIN_SUFFIXES = Object.freeze([
-  "google.com", "google.com.hk", "googleapis.com", "gstatic.com", "youtube.com", "youtu.be",
-  "googlevideo.com", "ytimg.com", "github.com", "githubusercontent.com",
-  "githubassets.com", "wikipedia.org", "wikimedia.org", "twitter.com", "x.com",
-  "t.co", "twimg.com", "telegram.org", "t.me"
-]);
-
 // Keep Store content/CDNs and account authentication on the same local exit.
 // Geographic inference alone splits these requests between DIRECT and MATCH.
 // Scope this to Store dependencies, not all Apple/iCloud services.
 // https://support.apple.com/en-us/101555 (Apps and additional content / Apple Account)
 export const APP_STORE_DOMAIN_SUFFIXES = Object.freeze([
-  "apps.apple.com", "itunes.apple.com", "mzstatic.com"
+  "apps.apple.com", "itunes.apple.com", "mzstatic.com", "apps-marketplace.apple.com"
 ]);
 export const APP_STORE_DOMAIN_NAMES = Object.freeze([
   "gsa.apple.com", "idmsa.apple.com", "account.apple.com", "appleid.cdn-apple.com"
@@ -86,27 +78,52 @@ export const TAILSCALE_DOMAIN_SUFFIXES = Object.freeze(["tailscale.com"]);
 export const TAILSCALE_SHARED_DOMAIN_SUFFIXES = Object.freeze(["ts.net"]);
 export const TAILNET_NETWORK_CIDRS = Object.freeze(["100.64.0.0/10", "fd7a:115c:a1e0::/48"]);
 
-export const CHINA_FALLBACK_DOMAIN_SUFFIXES = Object.freeze([
-  ".cn",
-  "126.com",
-  "163.com",
-  "alipay.com",
-  "aliyun.com",
-  "baidu.com",
-  "bilibili.com",
-  "bytedance.com",
-  "douyin.com",
-  "huawei.com",
-  "jd.com",
-  "mi.com",
-  "qq.com",
-  "taobao.com",
-  "tmall.com",
-  "toutiao.com",
-  "weibo.com",
-  "xiaomi.com",
-  "zhihu.com"
+// The service name is diagnostic metadata, not a user-selectable group.
+// Each stage is shared by the DNS, route and diagnostic compilers.
+function serviceRule(source, action, suffixes, names = []) {
+  const domains = Object.freeze([
+    ...names.map(value => Object.freeze({ match: "domain", value })),
+    ...suffixes.map(value => Object.freeze({ match: "domain_suffix", value }))
+  ]);
+  return Object.freeze({ source, action, dns: action === "direct" ? "domestic" : "remote", domains });
+}
+
+export const EARLY_DIRECT_SERVICE_RULES = Object.freeze([
+  serviceRule("tailscale", "direct", TAILSCALE_DOMAIN_SUFFIXES),
+  serviceRule("app-store", "direct", APP_STORE_DOMAIN_SUFFIXES, APP_STORE_DOMAIN_NAMES)
 ]);
+
+export const AI_SERVICE_RULE = serviceRule("ai", "ai", AI_DOMAIN_SUFFIXES, AI_DOMAIN_NAMES);
+
+export const POST_ADBLOCK_SERVICE_RULES = Object.freeze([
+  // YouTube API must match before the shared googleapis.com suffix.
+  serviceRule("youtube", "proxy",
+    ["youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtube-nocookie.com"],
+    ["youtubei.googleapis.com", "youtube.googleapis.com"]),
+  serviceRule("google", "proxy", [
+    "google.com", "google.com.hk", "google.co.uk", "googleapis.com", "gstatic.com",
+    "gmail.com", "googleusercontent.com"
+  ]),
+  serviceRule("proxy-domain", "proxy", [
+    "github.com", "githubusercontent.com", "githubassets.com", "wikipedia.org", "wikimedia.org",
+    "twitter.com", "x.com", "t.co", "twimg.com", "telegram.org", "t.me"
+  ]),
+  // Domestic app media/CDN suffixes come from the bundled CN domain list.
+  // Keep unlisted/shared CDNs on the existing DNS + geographic-IP path.
+  serviceRule("domestic-app", "direct", [
+    "qq.com", "qpic.cn", "qlogo.cn", "gtimg.com",
+    "douyin.com", "douyinpic.com", "douyinvod.com", "toutiao.com",
+    "taobao.com", "tmall.com", "alicdn.com", "tbcdn.cn", "alipay.com", "alipayobjects.com",
+    "jd.com", "jdpay.com", "bilibili.com", "biliapi.net", "hdslb.com",
+    "xiaohongshu.com", "xhscdn.com", "weibo.com", "zhihu.com", "qianshouapp.cn"
+  ]),
+  serviceRule("geosite", "direct", [
+    "cn", "126.com", "163.com", "aliyun.com", "baidu.com", "bytedance.com",
+    "huawei.com", "mi.com", "xiaomi.com"
+  ])
+]);
+
+const SMART_DOMAIN_RULES = [...EARLY_DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...POST_ADBLOCK_SERVICE_RULES];
 
 export const LOCAL_DOMAIN_SUFFIXES = Object.freeze([
   "local",
@@ -320,20 +337,10 @@ export function routingDecisionForDomain(inputPolicy, inputDomain, { addresses }
   if (policy.mode === "global-proxy") {
     return { action: "proxy", source: "mode", ruleId: null, dns: "remote" };
   }
-  if (TAILSCALE_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "direct", source: "tailscale", ruleId: null, dns: "domestic" };
-  }
-  if (APP_STORE_DOMAIN_NAMES.includes(domain) || APP_STORE_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "direct", source: "app-store", ruleId: null, dns: "domestic" };
-  }
-  if (AI_DOMAIN_NAMES.includes(domain) || AI_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "ai", source: "ai", ruleId: null, dns: "remote" };
-  }
-  if (PROXY_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "proxy", source: "proxy-domain", ruleId: null, dns: "remote" };
-  }
-  if (CHINA_FALLBACK_DOMAIN_SUFFIXES.some((suffix) => matchesSuffix(domain, suffix))) {
-    return { action: "direct", source: "geosite", ruleId: null, dns: "domestic" };
+  for (const { domains, source, action, dns } of SMART_DOMAIN_RULES) {
+    if (domains.some(rule => domainMatches(domain, rule))) {
+      return { action, source, ruleId: null, dns };
+    }
   }
   return { action: "resolve", source: "geoip", ruleId: null, dns: "remote" };
 }

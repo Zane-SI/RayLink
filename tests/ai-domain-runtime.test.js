@@ -39,13 +39,13 @@ test("an explicitly added AI domain reaches residential egress while adjacent or
 
 test("broad custom AI rules cannot move shared provider sites into residential but retain dedicated built-in AI exceptions", () => {
   const config = buildSingBoxConfig(snapshot([
-    ...["google.com", "googleapis.com", "gstatic.com", "youtube.com", "x.com", "instagram.com", "githubusercontent.com", "microsoft.com", "microsoftonline.com", "cloudflare.com", "workos.com", "co.uk"].map((value, index) =>
+    ...["google.com", "googleapis.com", "gstatic.com", "youtube.com", "youtube-nocookie.com", "x.com", "instagram.com", "githubusercontent.com", "microsoft.com", "microsoftonline.com", "cloudflare.com", "workos.com", "co.uk"].map((value, index) =>
       ({ id: `broad-${index}`, match: "domain_suffix", value, action: "ai" })),
     { id: "shared-exact", match: "domain", value: "workos.imgix.net", action: "ai" }
   ]));
   assert.equal(destination(config, "www.google.com"), "direct", "ordinary Google must not use the AI residential upstream");
   assert.equal(destination(config, "www.google.com", "udp"), "direct", "ordinary Google UDP must retain the server egress");
-  for (const domain of ["accounts.google.com", "maps.googleapis.com", "fonts.gstatic.com", "www.youtube.com", "x.com", "instagram.com", "raw.githubusercontent.com", "login.microsoftonline.com", "www.microsoft.com", "challenges.cloudflare.com", "cdn.workos.com", "workos.imgix.net", "www.google.co.uk"]) {
+  for (const domain of ["accounts.google.com", "maps.googleapis.com", "fonts.gstatic.com", "www.youtube.com", "www.youtube-nocookie.com", "youtubei.googleapis.com", "x.com", "instagram.com", "raw.githubusercontent.com", "login.microsoftonline.com", "www.microsoft.com", "challenges.cloudflare.com", "cdn.workos.com", "workos.imgix.net", "www.google.co.uk"]) {
     assert.equal(destination(config, domain), "direct", domain);
     assert.equal(destination(config, domain, "udp"), "direct", domain);
   }
