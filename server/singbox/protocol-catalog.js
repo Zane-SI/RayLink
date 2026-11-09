@@ -3,11 +3,11 @@ import { createHmac } from "node:crypto";
 import {
   AI_SERVICE_RULE,
   DEFAULT_ROUTE_PROBE_URL,
-  DIRECT_SERVICE_RULES,
+  EARLY_DIRECT_SERVICE_RULES,
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
   ROUTE_POLICY_GROUPS,
-  SMART_SERVICE_RULES,
+  POST_ADBLOCK_SERVICE_RULES,
   TAILNET_NETWORK_CIDRS
 } from "../routing/policy.js";
 import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
@@ -695,7 +695,7 @@ function clientConfigForOutbounds(
   }];
   const managedRouteRules = routePolicy.mode === "smart"
     ? [
-        ...SMART_SERVICE_RULES.flatMap(serviceRouteRules),
+        ...POST_ADBLOCK_SERVICE_RULES.flatMap(serviceRouteRules),
         ...resolveRemaining({ rule_set: "geosite-geolocation-cn" }),
         {
           rule_set: "geosite-geolocation-cn",
@@ -759,9 +759,9 @@ function clientConfigForOutbounds(
         },
         ...customDnsRules,
         ...(routePolicy.mode === "smart" ? [
-          ...DIRECT_SERVICE_RULES.flatMap(serviceDnsRules),
+          ...EARLY_DIRECT_SERVICE_RULES.flatMap(serviceDnsRules),
           ...(aiUnavailable ? [{ ...aiDnsMatch, action: "reject" }] : proxyDnsRules(aiDnsMatch, "dns-ai", resolvesCustomIps)),
-          ...SMART_SERVICE_RULES.flatMap(serviceDnsRules),
+          ...POST_ADBLOCK_SERVICE_RULES.flatMap(serviceDnsRules),
           { rule_set: "geosite-geolocation-cn", action: "route", server: "dns-domestic" },
           ...(!resolvesCustomIps ? unclassifiedAddressDnsRules() : [])
         ] : []),
@@ -852,7 +852,7 @@ function clientConfigForOutbounds(
           outbound: ROUTE_POLICY_GROUPS.direct.tag
         },
         ...customRouteRules,
-        ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(serviceRouteRules) : []),
+        ...(routePolicy.mode === "smart" ? EARLY_DIRECT_SERVICE_RULES.flatMap(serviceRouteRules) : []),
         ...managedAiRouteRules,
         { rule_set: "adblock-johnshall", action: "reject" },
         ...managedRouteRules

@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import {
   AI_SERVICE_RULE,
   createRoutePolicyCandidates,
-  DIRECT_SERVICE_RULES,
+  EARLY_DIRECT_SERVICE_RULES,
   LOCAL_DOMAIN_SUFFIXES,
   normalizeRoutingPolicy,
   PRIVATE_NETWORK_CIDRS,
   routeProbeUrlFromConfig,
   ROUTE_POLICY_GROUPS,
-  SMART_SERVICE_RULES,
+  POST_ADBLOCK_SERVICE_RULES,
   TAILSCALE_DOMAIN_SUFFIXES,
   TAILSCALE_SHARED_DOMAIN_SUFFIXES
 } from "../routing/policy.js";
@@ -290,7 +290,7 @@ function mihomoDnsPolicyRules(policy) {
     priorDomains.push(rule);
   }
   if (policy.mode === "smart") {
-    for (const { domains, dns, action } of [...DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...SMART_SERVICE_RULES]) {
+    for (const { domains, dns, action } of [...EARLY_DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...POST_ADBLOCK_SERVICE_RULES]) {
       for (const rule of domains) {
         const key = rule.match === "domain" ? rule.value : `+.${rule.value}`;
         if (!Object.hasOwn(rules, key) && !covered(rule.value)) rules[key] = dnsPolicyValue(dns, action);
@@ -785,7 +785,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     rules: [
       ...mihomoLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(mihomoRule),
-      ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
+      ...(routePolicy.mode === "smart" ? EARLY_DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
         domains.map(rule => mihomoRule({ ...rule, action }))) : []),
       ...AI_SERVICE_RULE.domains.map(({ match, value }) =>
         `${match === "domain" ? "DOMAIN" : "DOMAIN-SUFFIX"},${value},${aiPolicy}`),
@@ -795,7 +795,7 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
         : routePolicy.mode === "global-proxy"
           ? [...mihomoPrivateIpRules({ resolveDomains: true }), `MATCH,${ROUTE_POLICY_GROUPS.proxy.name}`]
           : [
-              ...SMART_SERVICE_RULES.flatMap(({ domains, action }) =>
+              ...POST_ADBLOCK_SERVICE_RULES.flatMap(({ domains, action }) =>
                 domains.map(rule => mihomoRule({ ...rule, action }))),
               "RULE-SET,raylink-cn-domain,DIRECT",
               ...mihomoPrivateIpRules({ resolveDomains: true }),
@@ -1015,7 +1015,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
             }
           }];
         }),
-        ...(routePolicy.mode === "smart" ? [...DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...SMART_SERVICE_RULES]
+        ...(routePolicy.mode === "smart" ? [...EARLY_DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...POST_ADBLOCK_SERVICE_RULES]
           .flatMap(({ domains, action, dns }) => domains.map(({ match, value }) => ({
             [match]: { match: value, value: dns === "domestic" ? "domestic" : action === "ai" ? "ai" : "overseas" }
           }))) : []),
@@ -1144,7 +1144,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
     rules: [
       ...egernLocalBypassRules(),
       ...routePolicy.rules.filter((rule) => rule.enabled).map(egernCustomRule),
-      ...(routePolicy.mode === "smart" ? DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
+      ...(routePolicy.mode === "smart" ? EARLY_DIRECT_SERVICE_RULES.flatMap(({ domains, action }) =>
         domains.map(rule => egernCustomRule({ ...rule, action }))) : []),
       // Default DNS connections follow the AI exit unless explicitly overridden.
       ...(usesAiDns ? [{ ip_cidr: { match: "9.9.9.9/32", policy: ROUTE_POLICY_GROUPS.ai.name, no_resolve: true } }] : []),
@@ -1155,7 +1155,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
         : routePolicy.mode === "global-proxy"
           ? [...egernPrivateIpRules({ resolveDomains: true }), { default: { policy: ROUTE_POLICY_GROUPS.proxy.name } }]
           : [
-              ...SMART_SERVICE_RULES.flatMap(({ domains, action }) =>
+              ...POST_ADBLOCK_SERVICE_RULES.flatMap(({ domains, action }) =>
                 domains.map(rule => egernCustomRule({ ...rule, action }))),
               ...egernChinaDomains("policy", "DIRECT"),
               ...egernPrivateIpRules({ resolveDomains: true }),

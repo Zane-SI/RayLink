@@ -88,14 +88,14 @@ function serviceRule(source, action, suffixes, names = []) {
   return Object.freeze({ source, action, dns: action === "direct" ? "domestic" : "remote", domains });
 }
 
-export const DIRECT_SERVICE_RULES = Object.freeze([
+export const EARLY_DIRECT_SERVICE_RULES = Object.freeze([
   serviceRule("tailscale", "direct", TAILSCALE_DOMAIN_SUFFIXES),
   serviceRule("app-store", "direct", APP_STORE_DOMAIN_SUFFIXES, APP_STORE_DOMAIN_NAMES)
 ]);
 
 export const AI_SERVICE_RULE = serviceRule("ai", "ai", AI_DOMAIN_SUFFIXES, AI_DOMAIN_NAMES);
 
-export const SMART_SERVICE_RULES = Object.freeze([
+export const POST_ADBLOCK_SERVICE_RULES = Object.freeze([
   // YouTube API must match before the shared googleapis.com suffix.
   serviceRule("youtube", "proxy",
     ["youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtube-nocookie.com"],
@@ -123,7 +123,7 @@ export const SMART_SERVICE_RULES = Object.freeze([
   ])
 ]);
 
-const SMART_DOMAIN_RULES = [...DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...SMART_SERVICE_RULES];
+const SMART_DOMAIN_RULES = [...EARLY_DIRECT_SERVICE_RULES, AI_SERVICE_RULE, ...POST_ADBLOCK_SERVICE_RULES];
 
 export const LOCAL_DOMAIN_SUFFIXES = Object.freeze([
   "local",

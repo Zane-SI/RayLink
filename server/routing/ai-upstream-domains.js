@@ -20,7 +20,7 @@ export const RESIDENTIAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([...AI_UPSTREAM_D
 export const AI_UPSTREAM_DOMAIN_SUFFIXES = Object.freeze(AI_DOMAIN_SUFFIXES.filter(domain => !sharedDomains.has(domain)));
 const protectedDomains = Object.freeze([
   "google.com", "google.co.uk", "google.co.jp", "google.com.hk", "google.com.tw", "google.com.sg", "google.com.au", "google.de", "google.fr", "google.ca",
-  "googleapis.com", "gstatic.com", "googleusercontent.com", "gmail.com", "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
+  "googleapis.com", "gstatic.com", "googleusercontent.com", "gmail.com", "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtube-nocookie.com",
   "x.com", "twitter.com", "t.co", "twimg.com", "instagram.com", "cdninstagram.com", "facebook.com", "fbcdn.net",
   "microsoft.com", "microsoftonline.com", "microsoftonline-p.com", "microsoftonline-p.net", "live.com", "windows.net", "cloud.microsoft",
   "github.com", "githubusercontent.com", "githubassets.com",
