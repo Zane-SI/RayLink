@@ -64,7 +64,9 @@ function fixture(name, latency) {
 }
 const primary = fixture("PRIMARY", 180);
 const backup = fixture("BACKUP", 400);
-const quic = fixture("QUIC-CANDIDATE", 180);
+// Establish the AI exit before improving the ordinary UDP path. Equal startup
+// latencies would make the first completed health result scheduler-dependent.
+const quic = fixture("QUIC-CANDIDATE", 400);
 const fixtures = [primary, backup, quic];
 let directRequests = 0;
 const origin = createServer((_req, response) => { directRequests++; response.end("DIRECT"); });
