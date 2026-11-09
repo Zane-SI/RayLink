@@ -12,7 +12,7 @@ test("Mihomo exposes three main choices with automatic defaults and direct manua
     const visible = groups.filter((group) => !group.includes("hidden: true"));
     assert.deepEqual(visible.map((group) => JSON.parse(group.split("\n")[0])), ["普通代理", "AI 代理", "未分类流量"]);
     const group = (name) => groups.find((entry) => entry.startsWith(JSON.stringify(name) + "\n"));
-    for (const [name, automatic] of [["普通代理", "故障回退"], ["AI 代理", "AI 稳定出口"]]) {
+    for (const [name, automatic] of [["普通代理", "RayLink 智能"], ["AI 代理", "AI 稳定出口"]]) {
       assert.match(group(name), new RegExp(`proxies:\\n\\s+- "${automatic}"`));
       assert.match(group(name), /raylink-tokyo-vless/);
       assert.match(group(name), /raylink-tokyo-hysteria2/);
@@ -21,6 +21,9 @@ test("Mihomo exposes three main choices with automatic defaults and direct manua
         assert.equal(patterns[0], `^${automatic}$`, "Provider ordering must preserve the automatic default");
       }
     }
+    assert.match(group("普通代理"), /- "故障回退"/);
+    assert.match(group("普通代理"), /- "TCP 稳定"/);
+    assert.match(body, /unified-delay: false/, "Measure connection setup as well as the reused connection RTT");
     assert.match(group("未分类流量"), /- "普通代理"\n\s+- "DIRECT"/);
     for (const name of ["TCP 稳定", "UDP 高速", "RayLink 智能", "故障回退", "AI 稳定出口", "RayLink 代理", "AI 网站代理"]) {
       assert.match(group(name), /hidden: true/, `${name} remains an internal/compatible reference`);
@@ -862,6 +865,7 @@ test("Egern profile adds smart TCP UDP manual policies, routing and encrypted DN
   );
   assert.match(artifact.body, /default_policy: "故障回退"/);
   assert.match(artifact.body, /- select:/);
+  assert.match(artifact.body, /name: "普通代理"\n\s+policies:\n\s+- "RayLink 智能"\n\s+- "故障回退"\n\s+- "TCP 稳定"/);
   assert.match(artifact.body, /name: "手动选择"/);
   assert.match(artifact.body, /name: "AI 代理"/);
   assert.match(artifact.body, /^rules:/m);
