@@ -18,23 +18,30 @@ export const REGIONAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([]);
 export const AI_UPSTREAM_DOMAIN_NAMES = Object.freeze(AI_DOMAIN_NAMES.filter(domain => !sharedDomains.has(domain)));
 export const RESIDENTIAL_UPSTREAM_DOMAIN_NAMES = Object.freeze([...AI_UPSTREAM_DOMAIN_NAMES]);
 export const AI_UPSTREAM_DOMAIN_SUFFIXES = Object.freeze(AI_DOMAIN_SUFFIXES.filter(domain => !sharedDomains.has(domain)));
+const youtubeEmbedSuffix = "youtube-nocookie.com";
+const matchesSuffix = (domain, suffix) => domain === suffix || domain.endsWith(`.${suffix}`);
 const protectedDomains = Object.freeze([
   "google.com", "google.co.uk", "google.co.jp", "google.com.hk", "google.com.tw", "google.com.sg", "google.com.au", "google.de", "google.fr", "google.ca",
-  "googleapis.com", "gstatic.com", "googleusercontent.com", "gmail.com", "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "youtube-nocookie.com",
+  "googleapis.com", "gstatic.com", "googleusercontent.com", "gmail.com", "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
   "x.com", "twitter.com", "t.co", "twimg.com", "instagram.com", "cdninstagram.com", "facebook.com", "fbcdn.net",
   "microsoft.com", "microsoftonline.com", "microsoftonline-p.com", "microsoftonline-p.net", "live.com", "windows.net", "cloud.microsoft",
   "github.com", "githubusercontent.com", "githubassets.com",
   "cloudflare.com", "cloudflare.net", "cloudfront.net", "amazonaws.com", "azureedge.net", "akamaized.net", "akamaihd.net", "fastly.net", "jsdelivr.net", "unpkg.com",
   "workos.com", "workoscdn.com", "imgix.net", "localhost", "local", "lan", "home.arpa"
 ]);
+const allProtectedDomains = Object.freeze([...protectedDomains, youtubeEmbedSuffix]);
 
 function builtinMatch() {
   return { domain: [...RESIDENTIAL_UPSTREAM_DOMAIN_NAMES], domain_suffix: [...AI_UPSTREAM_DOMAIN_SUFFIXES] };
 }
 
 function sharedCustomAiMatch(rule) {
+  // Leave the compiled Runtime unchanged unless this custom rule can reach
+  // the new protected suffix. Unrelated rules do not require republishing.
+  const matchesEmbed = matchesSuffix(rule.value, youtubeEmbedSuffix)
+    || (rule.match === "domain_suffix" && matchesSuffix(youtubeEmbedSuffix, rule.value));
   return { type: "logical", mode: "and", rules: [
-    { [rule.match]: [rule.value] }, { domain_suffix: [...protectedDomains] },
+    { [rule.match]: [rule.value] }, { domain_suffix: [...(matchesEmbed ? allProtectedDomains : protectedDomains)] },
     { ...builtinMatch(), invert: true }
   ] };
 }
@@ -70,8 +77,6 @@ function normalizedDomain(value) {
   return domain;
 }
 
-const matchesSuffix = (domain, suffix) => domain === suffix || domain.endsWith(`.${suffix}`);
-
 export function describeResidentialUpstreamDomain(value, policy = {}) {
   const domain = normalizedDomain(value);
   const result = { eligible: false, source: "none", match: null, value: null, ruleId: null,
@@ -81,7 +86,7 @@ export function describeResidentialUpstreamDomain(value, policy = {}) {
   const exact = AI_UPSTREAM_DOMAIN_NAMES.find(name => domain === name);
   const suffix = AI_UPSTREAM_DOMAIN_SUFFIXES.find(name => matchesSuffix(domain, name));
   const builtin = exact || suffix;
-  const shared = protectedDomains.find(name => matchesSuffix(domain, name));
+  const shared = allProtectedDomains.find(name => matchesSuffix(domain, name));
   const custom = rules.find(rule => rule.enabled && (rule.match === "domain" ? domain === rule.value
     : rule.match === "domain_suffix" && matchesSuffix(domain, rule.value)));
   if (custom) {
@@ -110,6 +115,6 @@ export function isResidentialUpstreamDomain(value, policy = {}) {
 
 export function aiDomainRulesView(policy = {}) {
   return { version: AI_DOMAIN_RULES_VERSION, domainNames: [...AI_DOMAIN_NAMES], domainSuffixes: [...AI_DOMAIN_SUFFIXES],
-    regionalDomains: [...REGIONAL_UPSTREAM_DOMAIN_NAMES], sharedDomains: [...sharedDomains], protectedDomains: [...protectedDomains],
+    regionalDomains: [...REGIONAL_UPSTREAM_DOMAIN_NAMES], sharedDomains: [...sharedDomains], protectedDomains: [...allProtectedDomains],
     customRules: normalizeRoutingPolicy(policy).rules.filter(rule => ["domain", "domain_suffix"].includes(rule.match)) };
 }
