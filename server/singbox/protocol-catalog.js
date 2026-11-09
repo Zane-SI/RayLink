@@ -15,9 +15,50 @@ import {
   TAILNET_NETWORK_CIDRS
 } from "../routing/policy.js";
 import { getBundledAdblockDomains } from "../routing/adblock/bundled.js";
+import { getDomesticDnsFallbackCidrs } from "../routing/domestic-dns.js";
 import { getBundledRoutingRules } from "../routing/rule-sets/bundled.js";
 
 const chinaFallbackSuffixes = CHINA_FALLBACK_DOMAIN_SUFFIXES.map(suffix => suffix.replace(/^\./, ""));
+const IPV4_ONLY_OMITTED_RECORDS = ["AAAA", "SVCB", "HTTPS"];
+
+function proxyDnsRules(match, server, resolvesCustomIps) {
+  const route = { ...match, action: "route", server };
+  // Custom IP rules need the full address family to classify a hostname.
+  if (resolvesCustomIps) return [route];
+  return [
+    {
+      type: "logical",
+      mode: "and",
+      rules: [match, { query_type: IPV4_ONLY_OMITTED_RECORDS }],
+      action: "predefined"
+    },
+    { ...route, remove_client_subnet: true }
+  ];
+}
+
+function unclassifiedAddressDnsRules() {
+  return [
+    // Hostname routing matches geoip-cn if any resolved address is in China.
+    // Do not combine a validated domestic A answer with an unvalidated AAAA.
+    { query_type: IPV4_ONLY_OMITTED_RECORDS, action: "predefined" },
+    // Keep the current domestic DoH endpoint and country data. An answer
+    // containing even one non-CN address must not steer traffic to DIRECT.
+    { query_type: ["A"], action: "evaluate", server: "dns-domestic", timeout: "500ms", disable_optimistic_cache: true },
+    {
+      type: "logical",
+      mode: "and",
+      rules: [
+        { match_response: true, response_rcode: "NOERROR", ip_accept_any: true },
+        { match_response: true, ip_cidr: getDomesticDnsFallbackCidrs(), invert: true }
+      ],
+      action: "respond",
+      race: true
+    },
+    // Remote DNS can start immediately but its answer is used only if the
+    // bounded domestic validation did not match.
+    { query_type: ["A"], action: "route", server: "dns-remote", speculative: true, remove_client_subnet: true }
+  ];
+}
 
 const sourceRoot = "https://github.com/SagerNet/sing-box/tree/v1.14.2";
 const docsRoot = "https://sing-box.sagernet.org/configuration/inbound";
@@ -582,15 +623,15 @@ function clientConfigForOutbounds(
     if (aiUnavailable && rule.action === "ai" && rule.dns === "remote") {
       return [{ [rule.match]: [rule.value], action: "reject" }];
     }
-    const field = rule.match === "domain" ? "domain" : "domain_suffix";
     return [{
-      [field]: [rule.value],
+      [rule.match]: [rule.value],
       action: "route",
       server: rule.dns === "system" ? "dns-local"
         : rule.dns === "domestic" ? "dns-domestic"
           : rule.action === "ai" ? "dns-ai" : "dns-remote"
     }];
   });
+  const aiDnsMatch = { domain: [...AI_DOMAIN_NAMES], domain_suffix: [...AI_DOMAIN_SUFFIXES] };
   let resolvesCustomIps = false;
   const customRouteRules = routePolicy.rules.flatMap((rule) => {
     if (!rule.enabled) return [];
@@ -725,15 +766,10 @@ function clientConfigForOutbounds(
           domain_suffix: [...APP_STORE_DOMAIN_SUFFIXES],
           action: "route",
           server: "dns-domestic"
-        }, {
-          domain: [...AI_DOMAIN_NAMES],
-          domain_suffix: [...AI_DOMAIN_SUFFIXES],
-          ...(aiUnavailable ? { action: "reject" } : { action: "route", server: "dns-ai" })
-        }, {
-          domain_suffix: [...PROXY_DOMAIN_SUFFIXES],
-          action: "route",
-          server: "dns-remote"
-        }, {
+        },
+        ...(aiUnavailable ? [{ ...aiDnsMatch, action: "reject" }] : proxyDnsRules(aiDnsMatch, "dns-ai", resolvesCustomIps)),
+        ...proxyDnsRules({ domain_suffix: [...PROXY_DOMAIN_SUFFIXES] }, "dns-remote", resolvesCustomIps),
+        {
           domain_suffix: [...chinaFallbackSuffixes],
           action: "route",
           server: "dns-domestic"
@@ -741,7 +777,11 @@ function clientConfigForOutbounds(
           rule_set: "geosite-geolocation-cn",
           action: "route",
           server: "dns-domestic"
-        }] : [])
+        }, ...(!resolvesCustomIps ? unclassifiedAddressDnsRules() : [])] : []),
+        ...(routePolicy.mode === "global-proxy" && !resolvesCustomIps ? [
+          { query_type: IPV4_ONLY_OMITTED_RECORDS, action: "predefined" },
+          { query_type: ["A"], action: "route", server: "dns-remote", remove_client_subnet: true }
+        ] : [])
       ],
       final: routePolicy.mode === "direct" ? "dns-domestic" : "dns-remote",
       strategy: "prefer_ipv4"

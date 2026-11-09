@@ -29,6 +29,7 @@ proxy.on("connect", (request, socket) => {
 });
 const dns = createSocket("udp4");
 const lookups = [];
+let unclassifiedAaaaQueried = false;
 let rotatingQueries = 0;
 dns.on("message", (query, remote) => {
   let cursor = 12;
@@ -36,6 +37,8 @@ dns.on("message", (query, remote) => {
   while (query[cursor]) { const size = query[cursor++]; labels.push(query.toString("ascii", cursor, cursor + size)); cursor += size; }
   const name = labels.join(".");
   const type = query.readUInt16BE(cursor + 1);
+  const foreignAaaa = bundledGeolocation && name === "unknown.example.test" && type === 28;
+  if (foreignAaaa) unclassifiedAaaaQueried = true;
   const question = query.subarray(12, cursor + 5);
   lookups.push(name);
   const bundledAddresses = {
@@ -57,10 +60,14 @@ dns.on("message", (query, remote) => {
             : name === "chatgpt.com" ? [192, 0, 2, 60] : [192, 0, 2, 20];
   const header = Buffer.from(query.subarray(0, 12));
   header.writeUInt16BE(0x8180, 2);
-  header.writeUInt16BE(type === 1 ? 1 : 0, 6);
+  header.writeUInt16BE(type === 1 || foreignAaaa ? 1 : 0, 6);
   header.writeUInt16BE(0, 8); header.writeUInt16BE(0, 10);
   const answer = Buffer.from([0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, name.startsWith("rotating.") ? 0 : 10, 0, 4, ...address]);
-  dns.send(Buffer.concat([header, question, ...(type === 1 ? [answer] : [])]), remote.port, remote.address);
+  const aaaa = Buffer.from([
+    0xc0, 0x0c, 0, 28, 0, 1, 0, 0, 0, 10, 0, 16,
+    ...Buffer.from("26064700470000000000000000001111", "hex")
+  ]);
+  dns.send(Buffer.concat([header, question, ...(type === 1 ? [answer] : foreignAaaa ? [aaaa] : [])]), remote.port, remote.address);
 });
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -138,6 +145,8 @@ try {
   assert.ok(proxyTargets.includes(`${bundledGeolocation ? "8.141.181.226" : "192.0.2.40"}:${originPort}`), "custom proxy DNS must supply the actual dial address, not just a diagnostic label");
   assert.ok(proxyTargets.includes(`${bundledGeolocation ? "8.141.181.226" : "192.0.2.50"}:${originPort}`), "known overseas DNS must supply the proxy dial address even for a China IP answer");
   if (bundledGeolocation) {
+    assert.equal(unclassifiedAaaaQueried, false,
+      "SOCKS hostname resolution must not add an overseas IPv6 address to a validated domestic IPv4 destination");
     const ai = config.outbounds.find(({ tag }) => tag === "raylink-ai");
     assert.equal(ai.type, "selector");
     assert.ok(ai.outbounds.length && ai.outbounds.every((tag) => config.outbounds.find((outbound) => outbound.tag === tag)?.server), "Manual AI candidates must remain concrete authorized nodes");

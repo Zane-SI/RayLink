@@ -12,7 +12,8 @@ import { buildProtocolClientConfig, defaultProtocolConfigs } from "../server/sin
 
 const binary = process.env.SING_BOX_BIN || "sing-box";
 const directory = await mkdtemp(join(tmpdir(), "raylink-dns-"));
-const upstream = createSocket("udp4");
+const upstreams = new Map();
+const queried = new Set();
 const reservation = createSocket("udp4");
 let child;
 let drop = false;
@@ -21,15 +22,15 @@ let requests = 0;
 let log = "";
 let requestId = 0;
 const bind = async (socket) => { socket.bind(0, "127.0.0.1"); await once(socket, "listening"); return socket.address().port; };
-function packet(name) {
+function packet(name, type = 1) {
   const header = Buffer.alloc(12);
   header.writeUInt16BE(++requestId, 0);
   header.writeUInt16BE(0x100, 2);
   header.writeUInt16BE(1, 4);
   return Buffer.concat([header, ...name.split(".").map((label) => Buffer.concat([Buffer.from([label.length]), Buffer.from(label)])),
-    Buffer.from([0, 0, 1, 0, 1])]);
+    Buffer.from([0, type >> 8, type & 255, 0, 1])]);
 }
-async function query(port, name) {
+async function query(port, name, type = 1) {
   const socket = createSocket("udp4");
   const start = performance.now();
   try {
@@ -38,9 +39,10 @@ async function query(port, name) {
       socket.on("error", (error) => { clearTimeout(timeout); reject(error); });
       socket.once("message", (response) => {
         clearTimeout(timeout);
-        resolve({ rcode: response[3] & 15, answer: response.at(-1), elapsedMs: performance.now() - start });
+        resolve({ rcode: response[3] & 15, answer: response.at(-1), answers: response.readUInt16BE(6),
+          elapsedMs: performance.now() - start });
       });
-      socket.send(packet(name), port, "127.0.0.1");
+      socket.send(packet(name, type), port, "127.0.0.1");
     });
   } finally { socket.close(); }
 }
@@ -65,26 +67,63 @@ async function queryTcpTimeout(port, name) {
 
 try {
   assert.match(execFileSync(binary, ["version"], { encoding: "utf8" }), /^sing-box version 1\.14\.2\b/);
-  const upstreamPort = await bind(upstream);
   const inboundPort = await bind(reservation);
   reservation.close();
-  upstream.on("message", (request, remote) => {
-    requests++;
-    if (drop) return;
-    const response = Buffer.from(request);
-    response.writeUInt16BE(0x8180, 2);
-    response.writeUInt16BE(1, 6);
-    // A record with TTL 1s lets the test observe real expiry and background refresh.
-    const rr = Buffer.from([0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 1, 0, 4, 203, 0, 113, answer]);
-    upstream.send(Buffer.concat([response, rr]), remote.port, remote.address);
-  });
   const config = buildProtocolClientConfig({ profiles: defaultProtocolConfigs(), server: "127.0.0.1",
     probeUrl: "http://127.0.0.1:9/generate_204",
     credential: { email: "dns@example.com", runtimePassword: randomBytes(16).toString("base64"),
-      serverPassword: randomBytes(16).toString("base64") } });
+      serverPassword: randomBytes(16).toString("base64") },
+    routePolicy: { mode: "smart", rules: [{ match: "domain", value: "office.example.test", action: "direct", dns: "system" }] } });
   // Replace only environmental endpoints. Retain generated DNS/cache/routing policy.
-  config.dns.servers = config.dns.servers.map(({ tag }) => ({ type: "udp", tag,
-    server: "127.0.0.1", server_port: upstreamPort }));
+  for (const { tag } of config.dns.servers) {
+    const upstream = createSocket("udp4");
+    upstreams.set(tag, upstream);
+    upstream.on("message", async (request, remote) => {
+      requests++;
+      let end = 12;
+      const labels = [];
+      while (request[end]) {
+        const size = request[end++];
+        labels.push(request.toString("ascii", end, end + size));
+        end += size;
+      }
+      const domain = labels.join(".");
+      const type = request.readUInt16BE(end + 1);
+      queried.add(`${tag}:${domain}:${type}`);
+      const domestic = tag === "dns-domestic";
+      if (drop || (domestic && domain === "timeout.example.test")
+        || (tag === "dns-remote" && domain === "remote-down.example.test")) return;
+      if (domestic && domain === "cdn.example.test") await delay(120);
+      const foreign = [203, 0, 113, answer];
+      const chinese = [157, 255, 138, 45];
+      const privateAddress = [192, 168, 1, 20];
+      let records = [];
+      if (type === 28) records = [Buffer.from("24003200000000000000000000000001", "hex")];
+      if (type === 1) {
+        const domesticRecords = {
+          "cdn.example.test": [chinese],
+          "remote-down.example.test": [chinese],
+          "mixed-cn-first.example.test": [chinese, foreign],
+          "mixed-foreign-first.example.test": [foreign, chinese],
+          "private.example.test": [privateAddress]
+        };
+        records = (domestic ? domesticRecords[domain] : null) ?? [foreign];
+      }
+      const response = Buffer.from(request.subarray(0, end + 5));
+      response.writeUInt16BE(0x8180, 2);
+      response.writeUInt16BE(records.length, 6);
+      response.writeUInt16BE(0, 10);
+      // TTL 1s lets the test observe expiry and background refresh.
+      const answers = records.map((address) => Buffer.from([
+        0xc0, 0x0c, 0, type, 0, 1, 0, 0, 0, 1, 0, address.length, ...address
+      ]));
+      upstream.send(Buffer.concat([response, ...answers]), remote.port, remote.address);
+    });
+    await bind(upstream);
+  }
+  config.dns.servers = config.dns.servers.map(({ tag }) => ({
+    type: "udp", tag, server: "127.0.0.1", server_port: upstreams.get(tag).address().port
+  }));
   config.inbounds = [{ type: "direct", listen: "127.0.0.1", listen_port: inboundPort,
     override_address: "8.8.8.8", override_port: 53 }];
   config.experimental.cache_file.path = join(directory, "cache.db");
@@ -95,6 +134,31 @@ try {
   child.stderr.on("data", (chunk) => { log += chunk; });
   for (let i = 0; i < 100 && !log.includes("sing-box started") && child.exitCode === null; i++) await delay(50);
   assert.ok(log.includes("sing-box started"), log);
+  assert.equal((await query(inboundPort, "cdn.example.test")).answer, 45,
+    "An unclassified domain should prefer a validated domestic CDN answer even when remote DNS is faster");
+  assert.ok(queried.has("dns-remote:cdn.example.test:1"), "Remote DNS must run in parallel with domestic validation");
+  assert.equal((await query(inboundPort, "remote-down.example.test")).answer, 45,
+    "Remote DNS loss must not block a validated domestic answer");
+  for (const domain of ["mixed-cn-first.example.test", "mixed-foreign-first.example.test", "private.example.test", "timeout.example.test"]) {
+    const response = await query(inboundPort, domain);
+    assert.equal(response.answer, 11, `${domain} must fall back to remote DNS`);
+    assert.equal(response.answers, 1, `${domain} must discard the entire domestic response`);
+  }
+  for (const [domain, resolver] of [["www.google.com", "dns-remote"], ["chatgpt.com", "dns-ai"]]) {
+    assert.equal((await query(inboundPort, domain)).answer, 11);
+    assert.ok(queried.has(`${resolver}:${domain}:1`));
+    for (const type of [28, 64, 65]) {
+      const response = await query(inboundPort, domain, type);
+      assert.equal(response.rcode, 0);
+      assert.equal(response.answers, 0);
+      assert.ok(![...queried].some((key) => key.endsWith(`:${domain}:${type}`)));
+    }
+    assert.ok(!queried.has(`dns-domestic:${domain}:1`));
+  }
+  for (const [domain, resolver] of [["office.example.test", "dns-local"], ["apps.apple.com", "dns-domestic"], ["baidu.com", "dns-domestic"]]) {
+    assert.equal((await query(inboundPort, domain, 28)).answers, 1);
+    assert.ok(queried.has(`${resolver}:${domain}:28`));
+  }
   assert.equal((await query(inboundPort, "stale.example.test")).answer, 11);
   await delay(1300);
   drop = true;
@@ -125,7 +189,7 @@ try {
     await exited;
     clearTimeout(timer);
   }
-  try { upstream.close(); } catch { /* Already closed on startup failure. */ }
+  for (const upstream of upstreams.values()) upstream.close();
   try { reservation.close(); } catch { /* Port reservation was released before startup. */ }
   await rm(directory, { recursive: true, force: true });
 }
