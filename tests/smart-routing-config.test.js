@@ -58,7 +58,7 @@ test("smart subscription distinguishes system, domestic and AI DNS paths", () =>
   assert.equal(config.dns.rules.find((rule) => rule.domain_suffix?.includes("chatgpt.com"))?.server, "dns-ai");
 });
 
-test("mobile default uses TCP while AI recovery retains every enabled transport", () => {
+test("ordinary traffic adapts across transports while AI recovery retains every enabled transport", () => {
   const vless = defaultProtocolConfigs().find((profile) => profile.type === "vless");
   const config = buildMultiHostProtocolClientConfig({
     credential: { email: "test@example.com", runtimeUuid: "3365c019-4b70-4dd5-9b3a-48d83a22f24d", serverPassword: "AAAAAAAAAAAAAAAAAAAAAA==" },
@@ -68,7 +68,7 @@ test("mobile default uses TCP while AI recovery retains every enabled transport"
     ]
   });
   const group = (tag) => config.outbounds.find((outbound) => outbound.tag === tag);
-  assert.equal(group("raylink-auto").default, "raylink-tcp");
+  assert.equal(group("raylink-auto").default, "raylink-smart");
   assert.equal(group("raylink-ai").default, "raylink-ai-stable");
   assert.deepEqual(group("raylink-ai-stable").outbounds, ["raylink-primary-vless", "raylink-backup-vless", "raylink-quic-vless"]);
   assert.ok(group("raylink-auto").outbounds.includes("raylink-udp"));

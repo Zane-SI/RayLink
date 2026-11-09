@@ -150,14 +150,14 @@ try {
   const initialGroups = await proxies();
   assert.deepEqual(Object.values(initialGroups).filter((group) => group.all && group.name !== "GLOBAL" && !group.hidden)
     .map((group) => group.name).sort(), ["普通代理", "AI 代理", "未分类流量"].sort());
-  assert.equal(initialGroups["普通代理"].now, "故障回退");
+  assert.equal(initialGroups["普通代理"].now, "RayLink 智能");
   assert.equal(initialGroups["AI 代理"].now, "AI 稳定出口");
   for (const group of ["普通代理", "AI 代理"]) {
     assert.ok(names.every((name) => initialGroups[group].all.includes(name)), "Manual nodes must be selectable in the main group");
   }
   await waitFor(async () => { const state = await proxies(); return names.every((name) => (state[name]?.extra?.[probeUrl]?.history?.length || 0) > 0); }, "startup health checks did not complete");
   console.log(JSON.stringify({ phase: "startup", heads }));
-  assert.equal(heads, 14, "Seven proxies must have one unified-delay check each (two HEAD requests), rather than a separate check per group");
+  assert.equal(heads, 7, "Each proxy must have one full-connection check, shared across groups");
   for (const name of names) {
     await select(name);
     assert.equal(await transfer(mixed), payload, `${name}: strict TLS payload must arrive intact`);
@@ -184,12 +184,12 @@ try {
       assert.equal(healthy[name].extra[probeUrl].alive, true, `${format}: ${name} must remain usable`);
       assert.ok(healthy[name].extra[probeUrl].history.every((entry) => entry.delay > 0), `${format}: competing checks must not write failed status`);
     }
-    if (format === "mihomo-modern") assert.equal(heads, 14);
+    if (format === "mihomo-modern") assert.equal(heads, 7);
     console.log(JSON.stringify({ phase: "slow-health", format, perHeadMs: responseDelay, heads, protocols: names.length }));
   }
   responseDelay = 20;
   for (const format of ["mihomo-modern", "mihomo"]) {
-    for (const profile of profiles.slice(0, 4)) {
+    for (const profile of profiles) {
       if (servers.get(profile.type).child.exitCode !== null || servers.get(profile.type).child.signalCode !== null) servers.set(profile.type, await startServer(profile));
     }
     const exported = buildSubscriptionArtifact({ format, singBoxConfig: generated, endpointOverrides: { "node.fixture.invalid": "127.0.0.1" } }).body;
@@ -216,6 +216,10 @@ try {
     await waitFor(async () => {
       try { return await transfer(mixed) === payload && names.slice(4).includes((await proxies())["故障回退"].now); } catch { return false; }
     }, "Default fallback did not switch from failed TCP to a usable UDP protocol", 15000);
+    await select("普通代理");
+    await waitFor(async () => {
+      try { return await transfer(mixed) === payload && names.slice(4).includes((await proxies())["RayLink 智能"].now); } catch { return false; }
+    }, "Ordinary automatic selection did not use a live UDP candidate", 15000);
     console.log(JSON.stringify({ phase: "actual-node-outage", format, aiTcpFailover: true, tcpToUdp: true, payloadVerified: true }));
   
     // Only accelerate the fixture's timer for the recovery observation; retain
@@ -230,6 +234,12 @@ try {
     }, "Scheduled health checks did not restore the recovered TCP node", 8000);
     assert.equal(await transfer(mixed), payload);
     console.log(JSON.stringify({ phase: "scheduled-recovery", format, acceleratedIntervalSeconds: 2, tcpRestored: true }));
+    for (const type of types.slice(4)) await stop(servers.get(type));
+    await select("普通代理");
+    await waitFor(async () => {
+      try { return await transfer(mixed) === payload && (await proxies())["RayLink 智能"].now === names[0]; } catch { return false; }
+    }, "Ordinary automatic selection did not fall back to TCP after actual UDP outages", 15000);
+    console.log(JSON.stringify({ phase: "ordinary-udp-outage", format, tcpFallback: true, payloadVerified: true }));
   }
 
   // Same trusted CA, same credentials and port: only the SNI becomes invalid.

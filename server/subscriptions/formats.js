@@ -593,7 +593,12 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     {
       name: ROUTE_POLICY_GROUPS.proxy.name,
       type: "select",
-      proxies: [ROUTE_POLICY_GROUPS.fallback.name, ...names]
+      proxies: [
+        ROUTE_POLICY_GROUPS.smart.name,
+        ROUTE_POLICY_GROUPS.fallback.name,
+        ...(tcp.length ? [ROUTE_POLICY_GROUPS.tcp.name] : []),
+        ...names
+      ]
     },
     {
       name: ROUTE_POLICY_GROUPS.ai.name,
@@ -713,7 +718,8 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     mode: "rule",
     "log-level": "info",
     ipv6: false,
-    "unified-delay": true,
+    // Include setup cost so a slow TLS/WS handshake cannot win on warm RTT.
+    "unified-delay": false,
     "tcp-concurrent": true,
     profile: {
       "store-selected": true,
@@ -1093,7 +1099,7 @@ function buildEgernProfile(singBoxConfig, inputPolicy) {
       {
         select: {
           name: ROUTE_POLICY_GROUPS.proxy.name,
-          policies: ["网络环境", ...candidates.policyChoices]
+          policies: [...candidates.policyChoices, "网络环境"]
         }
       },
       ...(routePolicy.mode === "smart" ? [{

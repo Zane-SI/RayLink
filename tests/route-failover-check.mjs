@@ -62,9 +62,11 @@ function fixture(name, latency) {
   };
   return state;
 }
-const primary = fixture("PRIMARY", 10);
-const backup = fixture("BACKUP", 180);
-const quic = fixture("QUIC-CANDIDATE", 1);
+const primary = fixture("PRIMARY", 180);
+const backup = fixture("BACKUP", 400);
+// Establish the AI exit before improving the ordinary UDP path. Equal startup
+// latencies would make the first completed health result scheduler-dependent.
+const quic = fixture("QUIC-CANDIDATE", 400);
 const fixtures = [primary, backup, quic];
 let directRequests = 0;
 const origin = createServer((_req, response) => { directRequests++; response.end("DIRECT"); });
@@ -121,14 +123,21 @@ try {
   // Activate both generated selections and wait for their first health rounds.
   await request("ordinary.example.test"); await request("chatgpt.com");
   await until(() => primary.probes >= 2 && backup.probes >= 2 && quic.probes >= 1, "initial probe rounds missing");
-  assert.equal(await request("ordinary.example.test"), "PRIMARY");
+  await delay(500);
   assert.equal(await request("chatgpt.com"), "PRIMARY");
-  console.log("TCP default and AI choose PRIMARY despite faster QUIC-classified candidate");
+  quic.latency = 1;
+  await until(async () => await request("ordinary.example.test") === "QUIC-CANDIDATE", "ordinary group did not select the faster UDP-classified candidate");
+  assert.equal(await request("chatgpt.com"), "PRIMARY");
+  console.log("ordinary traffic selects the faster UDP-classified candidate; AI keeps PRIMARY");
   const streamArgs = curlArgs("chatgpt.com", "/stream");
   streamArgs[streamArgs.indexOf("--max-time") + 1] = "30";
   stream = spawn("curl", ["--no-buffer", ...streamArgs], { stdio: ["ignore", "pipe", "pipe"] });
   stream.stdout.on("data", (data) => { streamData += data; }); stream.stderr.on("data", (data) => { streamErrors += data; });
   await until(() => streamData.includes("PRIMARY"), "AI stream failed to open");
+  await quic.stop();
+  await until(async () => { try { return await request("ordinary.example.test") === "PRIMARY"; } catch { return false; } }, "ordinary traffic did not recover through TCP after UDP failure");
+  assert.equal(await request("chatgpt.com"), "PRIMARY");
+  console.log("failed UDP candidate: ordinary traffic recovers through TCP without changing AI exit");
   primary.latency = 350; backup.latency = 5;
   await until(async () => await request("ordinary.example.test") === "BACKUP", "TCP group did not select improved backup");
   const before = streamData.length;
@@ -139,15 +148,10 @@ try {
   assert.equal(primary.streams.size, 1);
   console.log("AI exit and sustained stream survive latency reversal and re-probes");
   await primary.stop();
-  await until(async () => { try { return ["BACKUP", "QUIC-CANDIDATE"].includes(await request("chatgpt.com")); } catch { return false; } }, "AI did not fail over after primary failure");
+  await until(async () => { try { return await request("chatgpt.com") === "BACKUP"; } catch { return false; } }, "AI did not fail over after primary failure");
   assert.equal(await request("ordinary.example.test"), "BACKUP");
   console.log("failed primary: AI selects a reachable candidate; ordinary connections select TCP backup");
   await backup.stop();
-  await assert.rejects(request("ordinary.example.test"));
-  await until(async () => { try { return await request("chatgpt.com") === "QUIC-CANDIDATE"; } catch { return false; } }, "AI did not recover through the surviving UDP candidate");
-  assert.equal(directRequests, 0, "TCP failures must not leak to DIRECT");
-  console.log("all TCP candidates fail: AI recovers through UDP; ordinary TCP selection stays isolated");
-  await quic.stop();
   await assert.rejects(request("chatgpt.com"));
   await assert.rejects(request("ordinary.example.test"));
   assert.equal(directRequests, 0, "proxy failures must not leak to DIRECT");

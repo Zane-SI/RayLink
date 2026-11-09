@@ -428,32 +428,10 @@ export function buildProtocolClientConfig({
 }
 
 const udpClientProtocolTypes = new Set(["hysteria", "hysteria2", "tuic"]);
-const UDP_STABLE_JITTER_LIMIT_MS = 80;
 export const SMART_PROTOCOL_HEALTH_MAX_AGE_MS = 15 * 60_000;
 
 function usesUdpTransport(protocol) {
   return udpClientProtocolTypes.has(protocol.type) || protocol.transport?.type === "quic";
-}
-
-function protocolIsStableForSmartSelection(activation, now) {
-  const check = activation?.publicCheck;
-  const recent = (value) => {
-    const timestamp = Date.parse(value);
-    return Number.isFinite(timestamp) && timestamp <= now + 60_000
-      && now - timestamp <= SMART_PROTOCOL_HEALTH_MAX_AGE_MS;
-  };
-  const rounds = Array.isArray(check?.healthWindow?.rounds) ? check.healthWindow.rounds : [];
-  return check?.availability === "available"
-    && recent(check.checkedAt)
-    && check.reachable === true
-    && Number(check.consecutiveFailures || 0) === 0
-    && Number(check.samples?.successful || 0) >= 4
-    && rounds.filter((round) => recent(round?.checkedAt)).length >= 3
-    && Number(check.healthWindow?.successRate || 0) >= 95
-    && typeof check.jitterMs === "number"
-    && Number.isFinite(check.jitterMs)
-    && check.jitterMs >= 0
-    && Number(check.jitterMs) <= UDP_STABLE_JITTER_LIMIT_MS;
 }
 
 export function buildMultiHostProtocolClientConfig({
@@ -462,10 +440,8 @@ export function buildMultiHostProtocolClientConfig({
   ruleSetBaseUrl = null,
   probeUrl = DEFAULT_ROUTE_PROBE_URL,
   routePolicy,
-  cdnIngress,
-  now = Date.now()
+  cdnIngress
 }) {
-  const smartExcludedTags = new Set();
   const outboundHostIds = new Map();
   const protocolOutbounds = hosts.flatMap((host) => {
     const managed = (host.protocols || [])
@@ -477,18 +453,9 @@ export function buildMultiHostProtocolClientConfig({
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "node";
-    const activations = new Map(
-      (host.protocolActivations || []).map((activation) => [activation.type, activation])
-    );
     const outbounds = managed.map((profile) => {
       const tag = `raylink-${hostTag}-${profile.type}`;
       outboundHostIds.set(tag, host.id);
-      if (
-        usesUdpTransport(profile)
-        && !protocolIsStableForSmartSelection(activations.get(profile.type), now)
-      ) {
-        smartExcludedTags.add(tag);
-      }
       return buildClientOutbound(profile, credential, host.endpointDomain || host.address, tag);
     });
     // The optional loopback adapter authenticates again against this Host's
@@ -511,7 +478,6 @@ export function buildMultiHostProtocolClientConfig({
   });
   return clientConfigForOutbounds(protocolOutbounds, {
     ruleSetBaseUrl,
-    smartExcludedTags,
     probeUrl,
     routePolicy,
     outboundHostIds
@@ -534,7 +500,6 @@ function clientConfigForOutbounds(
   protocolOutbounds,
   {
     ruleSetBaseUrl = null,
-    smartExcludedTags = new Set(),
     outboundHostIds = new Map(),
     probeUrl = DEFAULT_ROUTE_PROBE_URL,
     routePolicy: inputRoutePolicy
@@ -553,11 +518,11 @@ function clientConfigForOutbounds(
     || outboundHostIds.get(tag) === routePolicy.aiExit.hostId);
   const aiUnavailable = aiTags.length === 0;
   const aiManual = routePolicy.aiSelection === "manual";
-  const healthyUdpTags = udpTags.filter((tag) => !smartExcludedTags.has(tag));
-  const smartTags = [...tcpTags, ...healthyUdpTags];
-  const usableSmartTags = smartTags.length ? smartTags : tags;
+  // Only the client can measure its current TCP/UDP path. Server observations
+  // must not permanently exclude a working transport from client recovery.
+  const smartTags = [...tcpTags, ...udpTags];
   const automaticGroups = [
-    urlTestOutbound("raylink-smart", usableSmartTags, probeUrl, 80),
+    urlTestOutbound("raylink-smart", smartTags, probeUrl, 80),
     ...(tcpTags.length ? [urlTestOutbound("raylink-tcp", tcpTags, probeUrl)] : []),
     ...(udpTags.length ? [urlTestOutbound("raylink-udp", udpTags, probeUrl)] : []),
     urlTestOutbound("raylink-fastest", tags, probeUrl)
@@ -798,7 +763,7 @@ function clientConfigForOutbounds(
         type: "selector",
         tag: ROUTE_POLICY_GROUPS.proxy.tag,
         outbounds: [...selectorGroups, ...tags],
-        default: tcpTags.length ? ROUTE_POLICY_GROUPS.tcp.tag : ROUTE_POLICY_GROUPS.smart.tag,
+        default: ROUTE_POLICY_GROUPS.smart.tag,
         interrupt_exist_connections: false
       },
       ...(routePolicy.mode === "smart" ? [{

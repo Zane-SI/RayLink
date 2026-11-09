@@ -35,7 +35,7 @@ test("QUIC transports remain UDP candidates even when their protocol is VLESS", 
   const members = (tag) => config.outbounds.find((outbound) => outbound.tag === tag).outbounds;
   assert.deepEqual(members("raylink-tcp"), ["raylink-tcp-vless"]);
   assert.deepEqual(members("raylink-udp"), ["raylink-quic-vless"]);
-  assert.deepEqual(members("raylink-smart"), ["raylink-tcp-vless"]);
+  assert.deepEqual(members("raylink-smart"), ["raylink-tcp-vless", "raylink-quic-vless"]);
   const policy = createRoutePolicyCandidates({
     names: ["raylink-quic-vless", "raylink-tcp-vless"],
     tcp: members("raylink-tcp"), udp: members("raylink-udp"), smart: members("raylink-smart")
@@ -221,7 +221,7 @@ test("client configuration includes every enabled user-facing protocol", () => {
   );
   assert.equal(
     config.outbounds.find((outbound) => outbound.type === "selector").default,
-    "raylink-tcp"
+    "raylink-smart"
   );
   assert.deepEqual(config.inbounds.map((inbound) => inbound.type), ["tun", "mixed"]);
   assert.equal(config.inbounds[0].auto_route, true);
@@ -411,7 +411,7 @@ test("multi-host client configuration exposes each host's enabled protocols thro
   );
 });
 
-test("smart UDP admission rejects expired health while keeping explicit UDP choices", () => {
+test("client smart probes retain UDP despite stale or missing server observations", () => {
   const now = Date.parse("2026-10-01T12:00:00Z");
   const profiles = defaultProtocolConfigs().filter((profile) => ["vless", "hysteria2"].includes(profile.type)).map((profile) => ({
     ...profile, enabled: true, tls: { ...profile.tls, mode: "certificate", serverName: "node.example.com" }
@@ -429,13 +429,13 @@ test("smart UDP admission rejects expired health while keeping explicit UDP choi
   });
   const fresh = "2026-10-01T11:59:00Z";
   for (const config of [generate("2026-09-01T12:00:00Z"), generate(undefined), generate(fresh, "2026-09-01T12:00:00Z"), generate(fresh, fresh, null)]) {
-    assert.deepEqual(config.outbounds.find(({ tag }) => tag === "raylink-smart").outbounds, ["raylink-node-vless"]);
+    assert.deepEqual(config.outbounds.find(({ tag }) => tag === "raylink-smart").outbounds, ["raylink-node-vless", "raylink-node-hysteria2"]);
     assert.deepEqual(config.outbounds.find(({ tag }) => tag === "raylink-udp").outbounds, ["raylink-node-hysteria2"]);
   }
   assert.ok(generate(fresh).outbounds.find(({ tag }) => tag === "raylink-smart").outbounds.includes("raylink-node-hysteria2"));
 });
 
-test("client subscription separates TCP and UDP and excludes unhealthy UDP from smart selection", () => {
+test("client smart selection checks UDP independently of server-side failures", () => {
   const profiles = defaultProtocolConfigs().map((profile) => ({
     ...profile,
     enabled: ["vless", "hysteria2", "tuic"].includes(profile.type),
@@ -493,10 +493,10 @@ test("client subscription separates TCP and UDP and excludes unhealthy UDP from 
   );
   assert.deepEqual(
     config.outbounds.find((outbound) => outbound.tag === "raylink-smart").outbounds,
-    ["raylink-local-vless", "raylink-local-hysteria2"]
+    ["raylink-local-vless", "raylink-local-tuic", "raylink-local-hysteria2"]
   );
   const selector = config.outbounds.find((outbound) => outbound.tag === "raylink-auto");
-  assert.equal(selector.default, "raylink-tcp");
+  assert.equal(selector.default, "raylink-smart");
   assert.deepEqual(selector.outbounds.slice(0, 3), [
     "raylink-smart",
     "raylink-tcp",
@@ -504,7 +504,7 @@ test("client subscription separates TCP and UDP and excludes unhealthy UDP from 
   ]);
 });
 
-test("UDP groups expose every enabled QUIC protocol and smart selection promotes stable ones", () => {
+test("UDP and smart groups expose every enabled QUIC protocol to client health checks", () => {
   const profiles = defaultProtocolConfigs().map((profile) => ({
     ...profile,
     enabled: ["vless", "hysteria", "hysteria2", "tuic"].includes(profile.type),
@@ -566,7 +566,7 @@ test("UDP groups expose every enabled QUIC protocol and smart selection promotes
 
   assert.deepEqual(
     config.outbounds.find((outbound) => outbound.tag === "raylink-smart").outbounds,
-    ["raylink-local-vless", "raylink-local-hysteria"]
+    ["raylink-local-vless", "raylink-local-hysteria", "raylink-local-tuic", "raylink-local-hysteria2"]
   );
   assert.deepEqual(
     config.outbounds.find((outbound) => outbound.tag === "raylink-udp").outbounds,
@@ -578,7 +578,7 @@ test("UDP groups expose every enabled QUIC protocol and smart selection promotes
   );
   assert.equal(
     config.outbounds.find((outbound) => outbound.tag === "raylink-auto").default,
-    "raylink-tcp"
+    "raylink-smart"
   );
 });
 

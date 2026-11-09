@@ -181,7 +181,7 @@ RayLink 的协议目录来自安装 Runtime 的 `version + platform + build tags
 | 组合与传输 | 证书 TLS、Reality、HTTP、WebSocket、QUIC、gRPC、HTTPUpgrade |
 | 私有入口 | SOCKS、HTTP Proxy、Mixed |
 | 高级/系统入口 | ShadowTLS、Direct、TUN、Redirect、TProxy |
-| 客户端策略 | TUN、DNS 劫持、完整 CN/局域网分流、TCP 默认选择、独立 AI 稳定出口、客户端故障切换和手选 |
+| 客户端策略 | TUN、DNS 劫持、完整 CN/局域网分流、普通代理自动择优与 TCP 回退、独立 AI 稳定出口、客户端故障切换和手选 |
 
 完整的 inbound、outbound、endpoint、构建标签与平台限制见 [sing-box 协议支持矩阵](docs/sing-box-protocol-support.md)。
 

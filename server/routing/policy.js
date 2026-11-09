@@ -374,8 +374,8 @@ export function createRoutePolicyCandidates({
     fallback,
     manual: all,
     policyChoices: [
-      ROUTE_POLICY_GROUPS.fallback.name,
       ROUTE_POLICY_GROUPS.smart.name,
+      ROUTE_POLICY_GROUPS.fallback.name,
       ...(tcpCandidates.length ? [ROUTE_POLICY_GROUPS.tcp.name] : []),
       ...(udpCandidates.length ? [ROUTE_POLICY_GROUPS.udp.name] : []),
       ROUTE_POLICY_GROUPS.manual.name
