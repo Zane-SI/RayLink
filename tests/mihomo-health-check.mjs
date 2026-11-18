@@ -157,7 +157,7 @@ try {
   }
   await waitFor(async () => { const state = await proxies(); return names.every((name) => (state[name]?.extra?.[probeUrl]?.history?.length || 0) > 0); }, "startup health checks did not complete");
   console.log(JSON.stringify({ phase: "startup", heads }));
-  assert.equal(heads, 7, "Each proxy must have one full-connection check, shared across groups");
+  assert.equal(heads, 14, "Each proxy gets one logical shared check; unified-delay issues two HEADs");
   for (const name of names) {
     await select(name);
     assert.equal(await transfer(mixed), payload, `${name}: strict TLS payload must arrive intact`);
@@ -184,7 +184,7 @@ try {
       assert.equal(healthy[name].extra[probeUrl].alive, true, `${format}: ${name} must remain usable`);
       assert.ok(healthy[name].extra[probeUrl].history.every((entry) => entry.delay > 0), `${format}: competing checks must not write failed status`);
     }
-    if (format === "mihomo-modern") assert.equal(heads, 7);
+    if (format === "mihomo-modern") assert.equal(heads, 14);
     console.log(JSON.stringify({ phase: "slow-health", format, perHeadMs: responseDelay, heads, protocols: names.length }));
   }
   responseDelay = 20;

@@ -13,7 +13,7 @@ const protocols = defaultProtocolConfigs().filter(p =>
 ).map(p => ({ ...p, enabled: true, tls: { ...p.tls, mode: "certificate", serverName: "node.example.com" } }));
 const hosts = [{ id: "local", address: "node.example.com", protocols }];
 const cdnIngress = { hostId: "local", sourceTag: "raylink-vless", domain: "cdn.example.com", path: "/0123456789abcdef0123456789abcdef" };
-const tag = "raylink-local-vless-cdn";
+const tag = "raylink-local-vless-direct";
 const group = (config, name) => config.outbounds.find(o => o.tag === name)?.outbounds;
 const section = (body, name) => body.split(`name: "${name}"`)[1]?.split(/\n  - /)[0];
 
@@ -36,7 +36,7 @@ test("CDN entry reuses the user's UUID, preserves seven nodes and joins TCP, sma
     for (const name of ["TCP 稳定", "故障回退", "RayLink 智能", "AI 代理"]) {
       const candidates = section(body, name);
       // Both formats expose manual CDN selection in the primary AI group.
-      assert.match(candidates, /raylink-local-vless-cdn/, `${format}: ${name}`);
+      assert.match(candidates, /raylink-local-vless-direct/, `${format}: ${name}`);
     }
     const node = section(body, tag);
     assert.match(node, /server: "cdn.example.com"/);

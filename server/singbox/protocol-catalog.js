@@ -465,7 +465,7 @@ export function buildMultiHostProtocolClientConfig({
       && source.tls.mode === "certificate" && source.tls.serverName
       && source.transport.type === "none"
       && ["::", "0.0.0.0", "127.0.0.1"].includes(source.listen)) {
-      const tag = `raylink-${hostTag}-vless-cdn`;
+      const tag = `raylink-${hostTag}-vless-direct`;
       outboundHostIds.set(tag, host.id);
       outbounds.push({
         type: "vless", tag, server: cdnIngress.domain, server_port: 443,

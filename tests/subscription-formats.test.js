@@ -23,7 +23,7 @@ test("Mihomo exposes three main choices with automatic defaults and direct manua
     }
     assert.match(group("普通代理"), /- "故障回退"/);
     assert.match(group("普通代理"), /- "TCP 稳定"/);
-    assert.match(body, /unified-delay: false/, "Measure connection setup as well as the reused connection RTT");
+    assert.match(body, /unified-delay: true/, "Report unified delay consistently with the other working subscription");
     assert.match(group("未分类流量"), /- "普通代理"\n\s+- "DIRECT"/);
     for (const name of ["TCP 稳定", "UDP 高速", "RayLink 智能", "故障回退", "AI 稳定出口", "RayLink 代理", "AI 网站代理"]) {
       assert.match(group(name), /hidden: true/, `${name} remains an internal/compatible reference`);
