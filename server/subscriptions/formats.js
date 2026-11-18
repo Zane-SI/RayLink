@@ -9,6 +9,7 @@ import {
   routeProbeUrlFromConfig,
   ROUTE_POLICY_GROUPS,
   POST_ADBLOCK_SERVICE_RULES,
+  TAILNET_NETWORK_CIDRS,
   TAILSCALE_DOMAIN_SUFFIXES,
   TAILSCALE_SHARED_DOMAIN_SUFFIXES
 } from "../routing/policy.js";
@@ -311,6 +312,12 @@ function mihomoLocalBypassRules() {
 function mihomoPrivateIpRules({ resolveDomains = false } = {}) {
   return PRIVATE_NETWORK_CIDRS.map((cidr) => (
     `${isIpv6Value(cidr) ? "IP-CIDR6" : "IP-CIDR"},${cidr},DIRECT${resolveDomains ? "" : ",no-resolve"}`
+  ));
+}
+
+function mihomoTailnetIpRules() {
+  return TAILNET_NETWORK_CIDRS.map((cidr) => (
+    `${isIpv6Value(cidr) ? "IP-CIDR6" : "IP-CIDR"},${cidr},DIRECT`
   ));
 }
 
@@ -803,6 +810,8 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
           : [
               ...POST_ADBLOCK_SERVICE_RULES.flatMap(({ domains, action }) =>
                 domains.map(rule => mihomoRule({ ...rule, action }))),
+              ...(routePolicy.mode === "smart" ? ["DOMAIN-SUFFIX,ts.net,DIRECT"] : []),
+              ...mihomoTailnetIpRules(),
               "RULE-SET,raylink-cn-domain,DIRECT",
               ...mihomoPrivateIpRules({ resolveDomains: true }),
               "RULE-SET,raylink-cn-ip,DIRECT",

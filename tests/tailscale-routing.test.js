@@ -35,7 +35,7 @@ test("native TUN excludes mesh ranges without forcing shared ts.net DNS to Quad1
   assert.ok(!c.dns.servers.some(s => s.server === "100.100.100.100"));
 });
 
-test("Mihomo bypasses control fake IP while leaving client TUN and shared ts.net DNS alone", () => {
+test("Mihomo bypasses control fake IP and routes MagicDNS and mesh addresses directly", () => {
   for (const format of ["mihomo", "mihomo-modern"]) {
     const body = buildSubscriptionArtifact({ format, singBoxConfig: config() }).body;
     assert.ok(!body.includes('\ntun:'));
@@ -44,7 +44,16 @@ test("Mihomo bypasses control fake IP while leaving client TUN and shared ts.net
       assert.ok(filter.includes(`"+.${suffix}"`));
     }
     assert.ok(body.includes('DOMAIN-SUFFIX,tailscale.com,DIRECT'));
-    assert.ok(!body.includes('DOMAIN-SUFFIX,ts.net,DIRECT'));
+    // MagicDNS is published under shared public ts.net hosts. A domain rule is
+    // the only practical client-side way to keep *.tailnet.ts.net addresses
+    // outside the proxy fallback; controlplane DNS policy stays separate.
+    assert.ok(body.includes('DOMAIN-SUFFIX,ts.net,DIRECT'));
+    const rules = body.split("\nrules:\n")[1].trim().split("\n").map((line) => JSON.parse(line.trim().slice(2)));
+    const tsNetRule = rules.indexOf("DOMAIN-SUFFIX,ts.net,DIRECT");
+    assert.ok(tsNetRule > rules.indexOf("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve"), "Early no-resolve bypass must stay first");
+    assert.ok(tsNetRule < rules.indexOf("IP-CIDR,10.0.0.0/8,DIRECT"), "Tailnet rules must precede resolving private IP fallback");
+    assert.ok(body.includes("IP-CIDR,100.64.0.0/10,DIRECT"));
+    assert.ok(body.includes("IP-CIDR6,fd7a:115c:a1e0::/48,DIRECT"));
     assert.ok(body.includes('    "+.tailscale.com":\n      - "https://223.5.5.5/dns-query"'));
     assert.ok(!body.includes('    "+.ts.net":'));
     assert.ok(!body.includes('100.100.100.100'));
