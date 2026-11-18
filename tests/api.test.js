@@ -2275,7 +2275,7 @@ test("public CDN subscriptions reuse each User credential and remain removable w
     const nativeResponse = await fetch(`${testApp.baseUrl}${lastPath}?format=singbox`);
     assert.equal(nativeResponse.status, 200);
     const config = await nativeResponse.json();
-    const cdn = config.outbounds.find(o => o.tag === "raylink-local-vless-cdn");
+    const cdn = config.outbounds.find(o => o.tag === "raylink-local-vless-direct");
     assert.ok(cdn, "the actual public subscription must contain the CDN entry");
     assert.equal(cdn.uuid, config.outbounds.find(o => o.tag === "raylink-local-vless").uuid);
     uuids.add(cdn.uuid);
@@ -2296,7 +2296,7 @@ test("public CDN subscriptions reuse each User credential and remain removable w
   assert.equal(publishDisabled.status, 201);
   const after = await fetch(`${testApp.baseUrl}${lastPath}?format=singbox`);
   assert.equal(after.status, 200);
-  assert.ok(!(await after.json()).outbounds.some(o => o.tag === "raylink-local-vless-cdn"));
+  assert.ok(!(await after.json()).outbounds.some(o => o.tag === "raylink-local-vless-direct"));
 });
 
 test("FlClash subscription keeps the Host domain while pinning its resolved dial address", async (t) => {

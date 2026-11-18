@@ -718,8 +718,8 @@ function buildMihomoConfig(singBoxConfig, inputPolicy, endpointOverrides = {}, s
     mode: "rule",
     "log-level": "info",
     ipv6: false,
-    // Include setup cost so a slow TLS/WS handshake cannot win on warm RTT.
-    "unified-delay": false,
+    // Match the panel semantics used by the other working subscription.
+    "unified-delay": true,
     "tcp-concurrent": true,
     profile: {
       "store-selected": true,

@@ -53,7 +53,7 @@ RAYLINK_CDN_INGRESS_FILE=/var/lib/raylink-cdn/settings.json
 
 The file is read at control-plane startup. Invalid configured settings prevent startup; an unset variable preserves existing subscriptions. Keep the file readable only by the service account. A deliberate domain/path change requires updating Caddy, syncing the adapter, restarting the control plane and refreshing complete client subscriptions.
 
-The compiler appends `raylink-local-vless-cdn` with these fields:
+The compiler appends `raylink-local-vless-direct` with these fields:
 
 - Server and TLS SNI: the new CDN hostname; port 443; certificate verification on.
 - UUID: that User's existing VLESS UUID; encryption none; no Vision flow.
