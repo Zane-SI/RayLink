@@ -2466,7 +2466,15 @@ function userDrawerMarkup(user = {}) {
         <p class="drawer-section-label">登录安全</p>
         ${userPasswordResetMarkup(user)}
         <p class="drawer-section-label">用户中心与订阅访问</p>
-        ${userSubscriptionAccessMarkup(user)}`}
+        ${userSubscriptionAccessMarkup(user)}
+        <p class="drawer-section-label">删除用户</p>
+        <section class="user-access-card user-delete-card">
+          <div>
+            <strong>永久删除用户</strong>
+            <small>删除用户账号、会话、订阅和 Runtime 凭据，并在成功后发布新配置。历史 Runtime 身份别名会保留，避免延迟用量误归因。</small>
+          </div>
+          <button type="button" class="button danger" data-user-delete="${escapeHtml(user.id)}">删除用户</button>
+        </section>`}
     </form>`;
 }
 
@@ -3352,6 +3360,40 @@ async function resetUserPassword(button) {
   } finally {
     button.disabled = false;
     button.textContent = previousLabel;
+  }
+}
+
+async function deleteUserButton(button) {
+  const userId = button.dataset.userDelete;
+  const form = button.closest("#user-drawer-form");
+  const user = users.find((item) => item.id === userId);
+  if (!userId || !user) return;
+  if (!window.confirm(
+    `将永久删除 ${user.name}（${user.email}）。该用户将无法登录，所有订阅和 Runtime 凭据也会移除。此操作不可撤销，确认继续？`
+  )) return;
+
+  const previousLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "正在删除…";
+  try {
+    const result = await api(`/api/users/${encodeURIComponent(userId)}`, {
+      method: "DELETE"
+    });
+    await loadBootstrap();
+    closeDrawer();
+    showToast(
+      result.runtimeSync?.status === "pending" ? "用户已删除，等待应用" : "用户已删除",
+      result.runtimeSync?.status === "pending"
+        ? result.runtimeSync.message
+        : "账号和订阅已删除，Runtime 凭据已经从配置中移除。"
+    );
+  } catch (error) {
+    showToast("用户删除失败", error.message);
+  } finally {
+    if (form?.isConnected) {
+      button.disabled = false;
+      button.textContent = previousLabel;
+    }
   }
 }
 
@@ -4308,6 +4350,12 @@ document.addEventListener("click", async (event) => {
   const resetUserPasswordButton = event.target.closest("[data-reset-user-password]");
   if (resetUserPasswordButton) {
     await resetUserPassword(resetUserPasswordButton);
+    return;
+  }
+
+  const userDeleteButton = event.target.closest("[data-user-delete]");
+  if (userDeleteButton) {
+    await deleteUserButton(userDeleteButton);
     return;
   }
 

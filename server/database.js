@@ -3059,6 +3059,20 @@ export class RayLinkStore {
     return this.getUser(id);
   }
 
+  deleteUser(id) {
+    const current = this.getUser(id);
+    if (!current) throw domainError("USER_NOT_FOUND", "用户不存在", 404);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("DELETE FROM users WHERE id = ?").run(id);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return { deleted: true };
+  }
+
   resetUserPassword(id, password) {
     if (!this.getUser(id)) {
       throw domainError("USER_NOT_FOUND", "用户不存在", 404);
