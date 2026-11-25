@@ -63,6 +63,10 @@ test("MCP bootstrap views select their resource and do not expose credentials or
 test("MCP account and enrollment operations preserve role permissions and require explicit secret scope", () => {
   assert.deepEqual(tool("users_update").request({ requestId: "update-1", userId: "user-1", state: "disabled" }), { method: "PATCH", path: "/api/users/user-1", body: { state: "disabled" } });
   assert.deepEqual(tool("users_reset_password").request({ requestId: "reset-1", userId: "user-1", password: "new-password" }), { method: "POST", path: "/api/users/user-1/password/reset", body: { password: "new-password" } });
+  assert.deepEqual(tool("users_delete").request({ requestId: "delete-1", userId: "user-1" }), { method: "DELETE", path: "/api/users/user-1" });
+  assert.deepEqual(tool("users_delete").select({ deleted: true, runtimeSync: { status: "published" } }), { deleted: true, runtimeSync: { status: "published" } });
+  assert.equal(tool("users_delete").permission, "users.manage");
+  assert.equal(tool("users_delete").mutating, true);
   assert.deepEqual(tool("users_reset_password").select({ passwordReset: true, sessionsRevoked: 2 }), { passwordReset: true, sessionsRevoked: 2 });
   for (const [name, permission] of [["users_subscription_get", "read"], ["users_subscription_rotate", "users.manage"], ["hosts_create", "runtime.manage"], ["hosts_enrollment_rotate", "runtime.manage"]]) {
     const entry = tool(name);

@@ -200,8 +200,21 @@ test("official MCP client discovers scoped tools and creates a User through the 
   assert.doesNotMatch(JSON.stringify(user), /runtimePassword|runtimeUuid|subscriptionUrl/);
   const listing = output(await client.callTool({ name: "users_list", arguments: {} }));
   assert.equal(listing.users.filter((entry) => entry.email === "mcp@example.test").length, 1);
-  const audited = await (await f.api("/api/audit")).json();
+  const audited = await (await f.api("/api/audit?limit=500")).json();
   assert.ok(audited.events.some((entry) => entry.action === "MCP users_create"));
+
+  const deleted = await client.callTool({
+    name: "users_delete",
+    arguments: { requestId: "delete-user-001", userId: user.id }
+  });
+  assert.ok(!deleted.isError, JSON.stringify(deleted));
+  assert.equal(output(deleted).deleted, true);
+  assert.ok(["published", "current", "pending"].includes(output(deleted).runtimeSync.status));
+  assert.doesNotMatch(JSON.stringify(output(deleted)), /runtimePassword|runtimeUuid|subscriptionUrl/);
+  const afterDelete = output(await client.callTool({ name: "users_list", arguments: {} }));
+  assert.equal(afterDelete.users.filter((entry) => entry.email === "mcp@example.test").length, 0);
+  const latestEvents = (await (await f.api("/api/audit?limit=500")).json()).events;
+  assert.ok(latestEvents.some((entry) => entry.action === "MCP users_delete"));
 });
 
 test("retrying a write concurrently replays one outcome; reusing its id with different input is rejected", async (t) => {
@@ -310,7 +323,7 @@ test("Agent manages routing, certificates, protocol publication and rollback, ba
     installer: { async status() { return { installed: true, version: "1.14.2", platform: "linux", architecture: "amd64", tags: ["with_quic", "with_utls", "with_acme"] }; } }
   });
   const { client } = await connect(t, f, ["read", "users.manage", "runtime.manage", "hosts.provision", "system.manage", "admins.manage", "audit.read", "secrets.read"]);
-  assert.equal((await client.listTools()).tools.length, 63);
+  assert.equal((await client.listTools()).tools.length, 64);
   let sequence = 0;
   const call = async (name, args = {}, write = false) => {
     const response = await client.callTool({ name, arguments: { ...args, ...(write ? { requestId: `workflow-${++sequence}` } : {}) } });

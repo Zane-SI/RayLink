@@ -2020,6 +2020,15 @@ export async function createRayLinkApp(options) {
     }
 
     const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
+    if (request.method === "DELETE" && userMatch) {
+      const result = store.deleteUser(decodeURIComponent(userMatch[1]));
+      const runtimeSync = await reconcileUserEntitlements(admin.id);
+      sendJson(response, runtimeSync.status === "pending" ? 202 : 200, {
+        ...result,
+        runtimeSync
+      });
+      return;
+    }
     if (request.method === "PATCH" && userMatch) {
       const user = store.updateUser(
         decodeURIComponent(userMatch[1]),

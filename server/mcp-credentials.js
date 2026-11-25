@@ -3,7 +3,7 @@ import { createSessionSecret, hashSessionSecret } from "./security.js";
 
 export const MCP_SCOPES = Object.freeze([
   { id: "read", label: "读取状态", description: "读取不含密钥的用户、Host、Runtime 和系统状态" },
-  { id: "users.manage", label: "管理用户", description: "创建和修改用户及其服务权益" },
+  { id: "users.manage", label: "管理用户", description: "创建、修改和删除用户及其服务权益" },
   { id: "runtime.manage", label: "管理 Runtime", description: "管理协议、发布配置及执行 Runtime 操作" },
   { id: "hosts.provision", label: "SSH 自动接入", description: "使用提供的 SSH 凭据安装节点；还需 runtime.manage 权限" },
   { id: "system.manage", label: "管理系统", description: "修改证书设置、创建及校验备份" },

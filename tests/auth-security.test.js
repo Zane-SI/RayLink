@@ -217,7 +217,11 @@ test("password verification has a process-wide concurrency cap across client add
   const authenticate = f.app.store.authenticateAdmin.bind(f.app.store);
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  f.app.store.authenticateAdmin = (...args) => authenticate(...args).then(async result => { await gate; return result; });
+  f.app.store.authenticateAdmin = async (...args) => {
+    const result = await authenticate(...args);
+    await gate;
+    return result;
+  };
   let denied = 0;
   const requests = Array.from({ length: 32 }, (_, index) => f.api("/api/auth/login", {
     method: "POST", body: { username: `missing-${index}`, password: "incorrect" },

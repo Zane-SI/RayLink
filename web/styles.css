@@ -595,6 +595,7 @@ h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.012em; lin
 .button svg { width: 16px; height: 16px; }
 .button.primary { background: var(--accent); color: var(--accent-ink); }
 .button.secondary { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-soft); }
+.button.danger { border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent); background: var(--danger-soft); color: var(--danger); }
 .button.compact { min-height: 40px; padding: 0 12px; font-size: 10px; }
 .button:disabled { cursor: not-allowed; opacity: 0.46; }
 .heading-actions { display: flex; gap: 8px; }
@@ -1478,6 +1479,7 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 2px 0 0; accent-colo
 .user-access-card small { display: block; }
 .user-access-card strong { color: var(--text-soft); font-size: 11px; font-weight: 600; }
 .user-access-card small { margin-top: 4px; color: var(--faint); font-size: 9px; line-height: 1.55; }
+.user-delete-card { background: var(--surface-2); }
 .secure-link-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
