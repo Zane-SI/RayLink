@@ -270,7 +270,9 @@ test("HTTP MCP rejects hostile origins, host rebinding, oversized payloads, unkn
   });
   assert.equal(reboundStatus, 403);
   assert.equal((await request({}, "x".repeat(256 * 1024 + 1))).status, 413);
-  assert.equal((await fetch(`${f.base}/mcp`, { headers })).status, 405);
+  const methodProbe = await fetch(`${f.base}/mcp`, { method: "GET", headers });
+  assert.equal(methodProbe.status, 405);
+  assert.equal(methodProbe.headers.get("allow"), "POST");
   await assert.rejects(client.callTool({ name: "arbitrary_http_request", arguments: { url: "http://internal/" } }));
   const invalid = await client.callTool({ name: "users_create", arguments: { name: "missing request id" } }).catch((error) => error);
   assert.ok(invalid.isError || invalid instanceof Error);
