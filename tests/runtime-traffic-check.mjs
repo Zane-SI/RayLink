@@ -37,6 +37,11 @@ async function port() {
   await new Promise((resolve) => listener.close(resolve));
   return value;
 }
+async function uniquePorts(count) {
+  const values = new Set();
+  while (values.size < count) values.add(await port());
+  return [...values];
+}
 async function start(name, config, executable = binary) {
   const path = join(directory, `${name}.json`);
   await writeFile(path, JSON.stringify(config));
@@ -78,11 +83,11 @@ try {
   await once(target, "listening");
   for (const type of ["shadowsocks", "vmess", "vless", "trojan", "anytls", "hysteria", "tuic", "hysteria2", "naive"]) {
     const base = defaultProtocolConfigs().find((entry) => entry.type === type);
-    const profile = normalizeProtocolConfig({ ...base, enabled: true, listen: "127.0.0.1", port: await port(),
+    const [profilePort, statsPort, socksPort] = await uniquePorts(3);
+    const profile = normalizeProtocolConfig({ ...base, enabled: true, listen: "127.0.0.1", port: profilePort,
       tls: ["trojan", "anytls", "hysteria", "tuic", "hysteria2", "naive"].includes(type)
         ? { mode: "certificate", serverName: "node.example.com", certificatePath, keyPath }
         : { mode: "none" } });
-    const statsPort = await port();
     const snapshot = { host: { region: "test", runtimeVersion: "1.14.2", buildTags: ["with_v2ray_api"] },
       users: [user], protocols: [profile], masterPassword };
     const serverConfig = buildSingBoxConfig(snapshot);
@@ -91,7 +96,6 @@ try {
       credential: { ...user, serverPassword: masterPassword } });
     const outbound = generated.outbounds.find((entry) => entry.server_port === profile.port);
     if (outbound.tls) outbound.tls.certificate_path = certificatePath;
-    const socksPort = await port();
     const clientConfig = { log: { level: "info" },
       inbounds: [{ type: "socks", listen: "127.0.0.1", listen_port: socksPort }],
       outbounds: [outbound], route: { final: outbound.tag } };
